@@ -1,0 +1,29 @@
+jobs:
+  include:
+    -
+      os: linux
+      dist: xenial
+
+git:
+  depth: false
+
+language: python
+
+python:
+  - 3.8
+
+install:
+  - travis_retry pip install -r requirements.txt
+  - travis_retry pip install -r requirements-test.txt
+
+env:
+  - MPLBACKEND=Agg
+
+cache: pip
+
+script:
+  - python -m pip install --editable .
+  - python -m pytest --randomly-seed=42 --randomly-dont-reorganize --cov=cell_classification --pycodestyle cell_classification
+
+after_success:
+  - coveralls
