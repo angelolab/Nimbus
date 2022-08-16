@@ -4,6 +4,7 @@ import tensorflow as tf
 import numpy as np
 import os
 import xarray
+import sys
 
 class SegmentationTFRecords:
     """Prepares the data for the segmentation model
