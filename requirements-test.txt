@@ -1,0 +1,8 @@
+coveralls>=1.8.2,<2.0.0
+mock>=4.0.3,<5
+pytest<6.0.0
+pytest-cases>=3.6.0,<4
+pytest-cov<3.0.0
+pytest-mock<4.0.0
+pytest-pycodestyle<3.0.0
+pytest-randomly>=3.11.0,<4
