@@ -1,4 +1,3 @@
-from tkinter.messagebox import NO
 from tifffile import imread
 from skimage.morphology import erosion
 import tensorflow as tf
