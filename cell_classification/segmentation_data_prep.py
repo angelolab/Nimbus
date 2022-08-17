@@ -1,3 +1,4 @@
+from tkinter.messagebox import NO
 from tifffile import imread
 from skimage.morphology import erosion
 import tensorflow as tf
@@ -65,6 +66,10 @@ class SegmentationTFRecords:
             self.normalization_dict = self.calculate_normalization_matrix(
                 normalization_dict_path, normalization_quantile
             )
+            self.cell_mask_key = cell_mask_key
+            self.sample_key = sample_key
+            self.dataset = dataset
+            self.imaging_platform = imaging_platform
 
     def get_image(self, data_folder, marker):
         """Loads the images from a single data_folder
@@ -79,7 +84,7 @@ class SegmentationTFRecords:
             np.array:
                 The multiplexed image
         """
-        return None
+        return np.zeros([500, 500])
 
     def get_instance_masks(self, data_folder, cell_mask_key):
         """Makes a binary mask from an instance mask by eroding it
@@ -95,7 +100,7 @@ class SegmentationTFRecords:
             np.array:
                 The instance mask
         """
-        return None, None
+        return np.zeros([500, 500]), np.zeros([500, 500])
 
     def get_cell_types(self, labels, sample_name):
         """Gets the cell types from the cell table for the given labels
@@ -125,7 +130,7 @@ class SegmentationTFRecords:
         """
         return None
 
-    def marker_activity_mask(self, instance_mask, cell_types, marker_activity):
+    def get_marker_activity_mask(self, instance_mask, cell_types, marker_activity):
         """Makes a mask from the marker activity
 
         Args:
@@ -139,9 +144,9 @@ class SegmentationTFRecords:
             np.array:
                 The marker activity mask
         """
-        pass
+        return np.zeros([500, 500])
 
-    def prepare_example(self, data_folder, marker, normalization_dict):
+    def prepare_example(self, data_folder, marker):
         """Prepares a tfrecord example for the given data_folder and marker
         Args:
             data_folder (str):
@@ -155,12 +160,13 @@ class SegmentationTFRecords:
             dict:
                 Example dict
         """
-        # load and normalize the multiplexed image
+        # load and normalize the multiplexed image and masks
         mplex_img = self.get_image(data_folder, marker)
-        mplex_img /= normalization_dict[marker]
+        mplex_img /= self.normalization_dict[marker]
         binary_mask, instance_mask = self.get_instance_masks(
             data_folder, self.cell_mask_key
         )
+        # get the cell types and marker activity mask
         cell_types = self.get_cell_types(instance_mask, self.sample_key)
         marker_activity = self.get_marker_activity(cell_types, marker)
         marker_activity_mask = self.get_marker_activity_mask(
@@ -177,15 +183,26 @@ class SegmentationTFRecords:
             "marker": marker,
         }
 
+    def tile_example(example, tile_size):
+        """Tiles the example into a grid of tiles
+        Args:
+            example (dict):
+                The example to tile
+        Returns:
+            list:
+                List of example dicts, one for each tile
+        """
+        return None
+
     def make_tf_record(self, data_folders, tf_record_path):
-        """Iterates through the data_folders and loads, transforms and serializes a
-            tfrecord example for each data_folder
+        """Iterates through the data_folders and loads, transforms and
+        serializes a tfrecord example for each data_folder
 
         Args:
             tf_record_path (str):
                 The path to the tf record to make
         """
-        pass
+        return None
 
     def calculate_normalization_matrix(
         self, normalization_dict_path, normalization_quantile
@@ -200,4 +217,4 @@ class SegmentationTFRecords:
             dict:
                 The normalization dict
         """
-        pass
+        return {"CD8": 0.0}
