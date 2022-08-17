@@ -7,6 +7,7 @@ import xarray
 from tqdm import tqdm
 
 
+
 class SegmentationTFRecords:
     """Prepares the data for the segmentation model"""
 
@@ -44,8 +45,9 @@ class SegmentationTFRecords:
             tf_record_path (str):
                 The path to the tf record to make
             selected_markers (list):
-                The markers of interest for generating the tf record. If None, all markers
-                mentioned in the conversion_matrix are used
+                The markers of interest for generating the tf record. If None,
+                all markers mentioned in the conversion_matrix are used
+
             normalization_dict_path (str):
                 Path to the normalization dict json
             normalization_quantile (float):
@@ -68,6 +70,7 @@ class SegmentationTFRecords:
             marker (str):
                 The marker shown in the image, e.g. "CD8" corresponds
                 to file name "CD8.tiff" in the data_folder
+
         """
         pass
 
@@ -106,8 +109,9 @@ class SegmentationTFRecords:
                 The markers to get the activity for
         Returns:
             list:
-                The marker activity for the given labels, 1 if the marker is active, 0 
-                otherwise and -1 if the marker is not specific enough to be considered active
+                The marker activity for the given labels, 1 if the marker is active, 0
+                otherwise and -1 if the marker is not specific enough to be considered
+                active
         """
         pass
 
