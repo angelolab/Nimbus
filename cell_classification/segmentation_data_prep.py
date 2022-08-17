@@ -4,6 +4,8 @@ import tensorflow as tf
 import numpy as np
 import os
 import xarray
+from tqdm import tqdm
+import json
 
 
 class SegmentationTFRecords:
@@ -22,6 +24,7 @@ class SegmentationTFRecords:
         normalization_dict_path=None,
         normalization_quantile=0.99,
         cell_type_key="cluster_labels",
+        sample_key="SampleID",
         cell_mask_key="cell_segmentation",
     ):
         """Initializes SegmentationTFRecords and loads everything except the images
@@ -42,18 +45,26 @@ class SegmentationTFRecords:
             tf_record_path (str):
                 The path to the tf record to make
             selected_markers (list):
-                The markers of interest for generating the tf record. If None,
-                all markers mentioned in the conversion_matrix are used
+                The markers of interest for generating the tf record. If None, all markers
+                mentioned in the conversion_matrix are used
             normalization_dict_path (str):
                 Path to the normalization dict json
             normalization_quantile (float):
                 The quantile to use for normalization of multiplexed data
             cell_type_key (str):
                 The key in the cell table that contains the cell type labels
+            sample_key (str):
+                The key in the cell table that contains the sample name
             cell_mask_key (str):
                 The key in the data_folder that contains the cell mask labels
         """
         pass
+        if normalization_dict_path is not None:
+            self.normalization_dict = json.load(open(normalization_dict_path, "r"))
+        else:
+            self.normalization_dict = self.calculate_normalization_matrix(
+                normalization_dict_path, normalization_quantile
+            )
 
     def get_image(self, data_folder, marker):
         """Loads the images from a single data_folder
@@ -62,33 +73,43 @@ class SegmentationTFRecords:
             data_folder (str):
                 The path to the data_folder
             marker (str):
-                The marker shown in the image, e.g. "CD8" corresponds to
-                file name "CD8.tiff" in the data_folder
+                The marker shown in the image, e.g. "CD8" corresponds
+                to file name "CD8.tiff" in the data_folder
+        Returns:
+            np.array:
+                The multiplexed image
         """
-        pass
+        return None
 
-    def make_binary_mask(self, instance_mask):
+    def get_instance_masks(self, data_folder, cell_mask_key):
         """Makes a binary mask from an instance mask by eroding it
 
         Args:
-            instance_mask (np.array):
-                The instance mask to make binary
+            data_folder (str):
+                The path to the data_folder
+            cell_mask_key (str):
+                The key in the data_folder that contains the cell mask labels
         Returns:
             np.array:
                 The binary mask
+            np.array:
+                The instance mask
         """
-        pass
+        return None, None
 
-    def get_cell_types(self, labels):
+    def get_cell_types(self, labels, sample_name):
         """Gets the cell types from the cell table for the given labels
         Args:
             labels list:
                 The labels to get the cell types for
+            sample_name (str):
+                The name of the sample we use for look up in column sample_key
+                in cell_type.csv
         Returns:
             list:
                 The cell types for the given labels
         """
-        pass
+        return None
 
     def get_marker_activity(self, cell_types, marker):
         """Gets the marker activity for the given labels
@@ -100,10 +121,9 @@ class SegmentationTFRecords:
         Returns:
             list:
                 The marker activity for the given labels, 1 if the marker is active, 0
-                otherwise and -1 if the marker is not specific enough to be considered
-                active
+                otherwise and -1 if the marker is not specific enough to be considered active
         """
-        pass
+        return None
 
     def marker_activity_mask(self, instance_mask, cell_types, marker_activity):
         """Makes a mask from the marker activity
@@ -121,7 +141,43 @@ class SegmentationTFRecords:
         """
         pass
 
-    def make_tf_record(self, tf_record_path):
+    def prepare_example(self, data_folder, marker, normalization_dict):
+        """Prepares a tfrecord example for the given data_folder and marker
+        Args:
+            data_folder (str):
+                The path to the data_folder
+            marker (str):
+                The marker shown in the image, e.g. "CD8" corresponds
+                to file name "CD8.tiff" in the data_folder
+            normalization_dict (dict):
+                The normalization dict
+        Returns:
+            dict:
+                Example dict
+        """
+        # load and normalize the multiplexed image
+        mplex_img = self.get_image(data_folder, marker)
+        mplex_img /= normalization_dict[marker]
+        binary_mask, instance_mask = self.get_instance_masks(
+            data_folder, self.cell_mask_key
+        )
+        cell_types = self.get_cell_types(instance_mask, self.sample_key)
+        marker_activity = self.get_marker_activity(cell_types, marker)
+        marker_activity_mask = self.get_marker_activity_mask(
+            instance_mask, cell_types, marker_activity
+        )
+        return {
+            "mplex_img": mplex_img.astype(np.float32),
+            "binary_mask": binary_mask.astype(np.uint8),
+            "instance_mask": instance_mask.astype(np.uint16),
+            "cell_types": cell_types,
+            "marker_activity_mask": marker_activity_mask.astype(np.uint8),
+            "imaging_platform": self.imaging_platform,
+            "dataset": self.dataset,
+            "marker": marker,
+        }
+
+    def make_tf_record(self, data_folders, tf_record_path):
         """Iterates through the data_folders and loads, transforms and serializes a
             tfrecord example for each data_folder
 
