@@ -10,3 +10,4 @@ data_prep = SegmentationTFRecords(
     tile_size=[256, 256],
     tf_record_path="path_to_tf_record",
 )
+data_prep.prepare_example(None, "CD8")
