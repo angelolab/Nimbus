@@ -83,7 +83,8 @@ class SegmentationTFRecords:
             np.array:
                 The multiplexed image
         """
-        return np.zeros([500, 500])
+        img = imread(os.path.join(data_folder, marker + ".tiff"))
+        return img
 
     def get_instance_masks(self, data_folder, cell_mask_key):
         """Makes a binary mask from an instance mask by eroding it
