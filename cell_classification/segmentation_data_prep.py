@@ -101,17 +101,15 @@ class SegmentationTFRecords:
         """
         return np.zeros([500, 500]), np.zeros([500, 500])
 
-    def get_cell_types(self, labels, sample_name):
+    def get_cell_types(self, sample_name):
         """Gets the cell types from the cell table for the given labels
         Args:
-            labels list:
-                The labels to get the cell types for
             sample_name (str):
                 The name of the sample we use for look up in column sample_key
                 in cell_type.csv
         Returns:
-            list:
-                The cell types for the given labels
+            df:
+                The labels and corresponding cell types for the given sample
         """
         return None
 
@@ -166,7 +164,7 @@ class SegmentationTFRecords:
             data_folder, self.cell_mask_key
         )
         # get the cell types and marker activity mask
-        cell_types = self.get_cell_types(instance_mask, self.sample_key)
+        cell_types = self.get_cell_types(data_folder)
         marker_activity = self.get_marker_activity(cell_types, marker)
         marker_activity_mask = self.get_marker_activity_mask(
             instance_mask, cell_types, marker_activity
