@@ -210,6 +210,7 @@ def test_instance_mask():
         )
         assert np.array_equal(loaded_img, instance_mask)
         # check if binary mask is binarized correctly
+        assert np.min(loaded_binary_img) == 0
         assert np.max(loaded_binary_img) == 1
         # check if binary mask is eroded correctly
         loaded_eroded_img, loaded_img = data_prep.get_instance_mask(
