@@ -86,16 +86,22 @@ def test_get_image():
         assert not np.array_equal(CD8_img, CD4_img)
 
 
-def preapre_test_data_folders(num_folders, temp_dir, selected_markers):
+def preapre_test_data_folders(
+    num_folders, temp_dir, selected_markers, random=False, scale=1.0
+):
     data_folders = []
     for i in range(num_folders):
         folder = os.path.join(temp_dir, "fov_1" + str(i))
         os.mkdir(folder)
         data_folders.append(folder)
         for marker in selected_markers:
+            if random:
+                img = np.random.rand(256, 256) * scale
+            else:
+                img = np.ones([256, 256])
             imwrite(
                 os.path.join(temp_dir, "fov_1" + str(i), marker + ".tiff"),
-                np.ones([256, 256]),
+                img,
             )
     return data_folders
 
@@ -160,6 +166,22 @@ def test_calculate_normalization_matrix():
         )
         # check if the normalization_dict is correctly written to the json file
         assert norm_dict_loaded == norm_dict
+
+    # check if the normalization_dict has the correct values for stochastic images
+    for scale in [0.5, 2.0, 10.0]:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # create temporary folders with data
+            data_folders = preapre_test_data_folders(
+                5, temp_dir, selected_markers, random=True, scale=scale
+            )
+            norm_dict = data_prep.calculate_normalization_matrix(
+                data_folders=data_folders,
+                normalization_dict_path=os.path.join(temp_dir, "norm_dict_test.json"),
+                normalization_quantile=0.99,
+                selected_markers=selected_markers,
+            )
+            for marker in norm_dict.keys():
+                assert norm_dict[marker] - 1 / (0.5 * scale) < 0.001
 
 
 def test_prepare_example():
