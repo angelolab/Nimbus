@@ -100,7 +100,7 @@ class SegmentationTFRecords:
         img = imread(os.path.join(data_folder, marker + ".tiff"))
         return img
 
-    def get_instance_masks(self, data_folder, cell_mask_key):
+    def get_instance_mask(self, data_folder, cell_mask_key):
         """Makes a binary mask from an instance mask by eroding it
 
         Args:
@@ -114,7 +114,10 @@ class SegmentationTFRecords:
             np.array:
                 The instance mask
         """
-        return np.zeros([500, 500]), np.zeros([500, 500])
+        instance_mask = imread(os.path.join(data_folder, cell_mask_key + ".tiff"))
+        binary_instance_mask = erosion(instance_mask, np.ones([3, 3])) > 0
+        binary_instance_mask = binary_instance_mask.astype(instance_mask.dtype)
+        return binary_instance_mask, instance_mask
 
     def get_cell_types(self, sample_name):
         """Gets the cell types from the cell table for the given labels
@@ -175,7 +178,7 @@ class SegmentationTFRecords:
         # load and normalize the multiplexed image and masks
         mplex_img = self.get_image(data_folder, marker)
         mplex_img /= self.normalization_dict[marker]
-        binary_mask, instance_mask = self.get_instance_masks(
+        binary_mask, instance_mask = self.get_instance_mask(
             data_folder, self.cell_mask_key
         )
         # get the cell types and marker activity mask

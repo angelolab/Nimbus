@@ -86,7 +86,7 @@ def test_get_image():
         assert not np.array_equal(CD8_img, CD4_img)
 
 
-def preapre_test_data_folders(
+def prepare_test_data_folders(
     num_folders, temp_dir, selected_markers, random=False, scale=1.0
 ):
     data_folders = []
@@ -115,7 +115,7 @@ def test_calculate_normalization_matrix():
     selected_markers.remove("cluster_labels")
     with tempfile.TemporaryDirectory() as temp_dir:
         # create temporary folders with data
-        data_folders = preapre_test_data_folders(5, temp_dir, selected_markers)
+        data_folders = prepare_test_data_folders(5, temp_dir, selected_markers)
         norm_dict = data_prep.calculate_normalization_matrix(
             data_folders=data_folders,
             normalization_dict_path=os.path.join(temp_dir, "norm_dict_test.json"),
@@ -168,10 +168,10 @@ def test_calculate_normalization_matrix():
         assert norm_dict_loaded == norm_dict
 
     # check if the normalization_dict has the correct values for stochastic images
-    for scale in [0.5, 2.0, 10.0]:
+    for scale in [0.5, 9.132]:
         with tempfile.TemporaryDirectory() as temp_dir:
             # create temporary folders with data
-            data_folders = preapre_test_data_folders(
+            data_folders = prepare_test_data_folders(
                 5, temp_dir, selected_markers, random=True, scale=scale
             )
             norm_dict = data_prep.calculate_normalization_matrix(
@@ -184,9 +184,44 @@ def test_calculate_normalization_matrix():
                 assert norm_dict[marker] - 1 / (0.5 * scale) < 0.001
 
 
+def test_instance_mask():
+    instance_mask = np.zeros([256, 256], dtype=np.uint16)
+    instance_mask[0:32, 0:32] = 1
+    instance_mask[0:32, 32:64] = 2
+    instance_mask[0:32, 64:96] = 3
+    instance_mask[32:64, 0:32] = 4
+    instance_mask[64:96, 64:96] = 5
+
+    instance_mask_full = np.zeros([256, 256], dtype=np.uint16)
+    instance_mask_full[32:64, 32:64] = 9
+
+    instance_mask_eroded = np.zeros([256, 256], dtype=np.uint16)
+    instance_mask_eroded[33:63, 33:63] = 1
+    with tempfile.TemporaryDirectory() as temp_dir:
+        # check if the instance_mask is correctly loaded
+        imwrite(os.path.join(temp_dir, "cell_segmentation.tiff"), instance_mask)
+        imwrite(os.path.join(temp_dir, "weird_name_segmentation.tiff"), instance_mask)
+        imwrite(
+            os.path.join(temp_dir, "cell_segmentation_full.tiff"), instance_mask_full
+        )
+        data_prep = prep_object()
+        loaded_binary_img, loaded_img = data_prep.get_instance_mask(
+            data_folder=temp_dir, cell_mask_key="cell_segmentation"
+        )
+        assert np.array_equal(loaded_img, instance_mask)
+        # check if binary mask is binarized correctly
+        assert np.max(loaded_binary_img) == 1
+        # check if binary mask is eroded correctly
+        loaded_eroded_img, loaded_img = data_prep.get_instance_mask(
+            data_folder=temp_dir, cell_mask_key="cell_segmentation_full"
+        )
+        assert np.array_equal(loaded_eroded_img, instance_mask_eroded)
+
+
 def test_prepare_example():
     data_prep = prep_object()
     with tempfile.TemporaryDirectory() as temp_dir:
         test_img = np.random.rand(256, 256)
         imwrite(os.path.join(temp_dir, "CD8.tiff"), test_img)
+        imwrite(os.path.join(temp_dir, "cell_segmentation.tiff"), np.ones([256, 256]))
         data_prep.prepare_example(temp_dir, "CD8")
