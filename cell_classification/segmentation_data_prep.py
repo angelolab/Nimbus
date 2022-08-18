@@ -2,6 +2,7 @@ from tifffile import imread
 from skimage.morphology import erosion
 import tensorflow as tf
 import numpy as np
+import pandas as pd
 import os
 import xarray
 from tqdm import tqdm
@@ -58,17 +59,30 @@ class SegmentationTFRecords:
             cell_mask_key (str):
                 The key in the data_folder that contains the cell mask labels
         """
-        pass
-        if normalization_dict_path is not None:
-            self.normalization_dict = json.load(open(normalization_dict_path, "r"))
+        os.makedirs(tf_record_path, exist_ok=True)
+        # assign selected markers
+        self.conversion_matrix = pd.read_csv(conversion_matrix_path)
+        if selected_markers is None:
+            self.selected_markers = list(self.conversion_matrix.columns)
+            if cell_type_key in self.selected_markers:
+                self.selected_markers.remove(cell_type_key)
         else:
+            self.selected_markers = selected_markers
+        # load or construct normalization dict
+        if normalization_dict_path is None:
             self.normalization_dict = self.calculate_normalization_matrix(
-                normalization_dict_path, normalization_quantile
+                data_folders,
+                os.path.join(tf_record_path, "normalization_dict.json"),
+                normalization_quantile,
+                selected_markers=self.selected_markers,
             )
-            self.cell_mask_key = cell_mask_key
-            self.sample_key = sample_key
-            self.dataset = dataset
-            self.imaging_platform = imaging_platform
+        else:
+            self.normalization_dict = json.load(open(normalization_dict_path, "r"))
+
+        self.cell_mask_key = cell_mask_key
+        self.sample_key = sample_key
+        self.dataset = dataset
+        self.imaging_platform = imaging_platform
 
     def get_image(self, data_folder, marker):
         """Loads the images from a single data_folder
@@ -203,7 +217,11 @@ class SegmentationTFRecords:
         return None
 
     def calculate_normalization_matrix(
-        self, normalization_dict_path, normalization_quantile
+        self,
+        data_folders,
+        normalization_dict_path,
+        normalization_quantile,
+        selected_markers,
     ):
         """Calculates the normalization matrix for the given data if it does not exist
         Args:
@@ -215,4 +233,19 @@ class SegmentationTFRecords:
             dict:
                 The normalization dict
         """
-        return {"CD8": 0.0}
+        # iterate through the data_folders and calculate the quantiles
+        quantiles = {}
+        for data_folder in data_folders:
+            for marker in selected_markers:
+                img = self.get_image(data_folder, marker)
+                if marker not in quantiles:
+                    quantiles[marker] = []
+                quantiles[marker].append(np.quantile(img, normalization_quantile))
+        # calculate the normalization matrix
+        normalization_matrix = {}
+        for marker in selected_markers:
+            normalization_matrix[marker] = 1.0 / np.mean(quantiles[marker])
+        # save the normalization matrix
+        with open(normalization_dict_path, "w") as f:
+            json.dump(normalization_matrix, f)
+        return normalization_matrix
