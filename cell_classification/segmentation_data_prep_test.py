@@ -10,28 +10,32 @@ from tifffile import imwrite
 from segmentation_data_prep import SegmentationTFRecords
 
 
-def prep_object():
+def prep_object(
+    data_folders=["path"], cell_table_path="path",
+    conversion_matrix_path="path", normalization_dict_path="path",
+    tf_record_path="path",
+):
     data_prep = SegmentationTFRecords(
-        data_folders=["list", "of", "data", "folders"],
-        cell_table_path="list_to_cell_table_path",
-        conversion_matrix_path="path_to_conversion_matrix",
+        data_folders=data_folders,
+        cell_table_path=cell_table_path,
+        conversion_matrix_path=conversion_matrix_path,
         imaging_platform="imaging_platform",
         dataset="dataset",
         tile_size=[256, 256],
-        tf_record_path="tf_record_path",
-        normalization_dict_path="path_to_normalization_dict",
+        tf_record_path=tf_record_path,
+        normalization_dict_path=normalization_dict_path,
     )
     return data_prep
 
 
 def prepare_conversion_matrix():
-    col_names = ["cluster_labels", "CD11c", "CD14", "CD56", "CD57"]
+    col_names = ["CD11c", "CD14", "CD56", "CD57"]
     row_names = ["stromal", "FAP", "NK", "CD4T", "CD14", "CD163"]
     conversion_matrix = pd.DataFrame(
         np.random.randint(0, 2, size=(len(row_names), len(col_names))),
         columns=col_names,
+        index=row_names,
     )
-    conversion_matrix.cluster_labels = row_names
     return conversion_matrix
 
 
@@ -49,9 +53,7 @@ def test_get_image():
         assert not np.array_equal(CD8_img, CD4_img)
 
 
-def prepare_test_data_folders(
-    num_folders, temp_dir, selected_markers, random=False, scale=1.0
-):
+def prepare_test_data_folders(num_folders, temp_dir, selected_markers, random=False, scale=1.0):
     data_folders = []
     for i in range(num_folders):
         folder = os.path.join(temp_dir, "fov_1" + str(i))
@@ -73,9 +75,7 @@ def test_calculate_normalization_matrix():
 
     # instantiate data_prep, conversion_matrix and markers
     data_prep = prep_object()
-    conversion_matrix = prepare_conversion_matrix()
-    selected_markers = list(conversion_matrix.columns)
-    selected_markers.remove("cluster_labels")
+    selected_markers = ["CD11c", "CD14", "CD56", "CD57"]
 
     # check normalization_dict for different stochastic images
     for scale in [0.5, 9.132]:
@@ -85,11 +85,11 @@ def test_calculate_normalization_matrix():
             data_folders = prepare_test_data_folders(
                 5, temp_dir, selected_markers, random=True, scale=scale
             )
+            data_prep = prep_object(
+                normalization_dict_path=os.path.join(temp_dir, "norm_dict_test.json")
+            )
             norm_dict = data_prep.calculate_normalization_matrix(
-                data_folders=data_folders,
-                normalization_dict_path=os.path.join(temp_dir, "norm_dict_test.json"),
-                normalization_quantile=0.99,
-                selected_markers=selected_markers,
+                data_folders=data_folders, selected_markers=selected_markers
             )
 
             # check if the normalization_dict has the correct values for stochastic images
@@ -107,66 +107,39 @@ def test_calculate_normalization_matrix():
                 assert marker in norm_dict.keys()
 
 
-def test_make_tf_record():
-    data_prep = prep_object()
-    conversion_matrix = prepare_conversion_matrix()
-    selected_markers = list(conversion_matrix.columns)
-    selected_markers.remove("cluster_labels")
+def test_check_input():
     with tempfile.TemporaryDirectory() as temp_dir:
-
-        # create temporary folders with data and prepare normalization_dict
-        data_folders = prepare_test_data_folders(5, temp_dir, selected_markers)
-        norm_dict = data_prep.calculate_normalization_matrix(
-            data_folders=data_folders,
-            normalization_dict_path=os.path.join(temp_dir, "norm_dict_test.json"),
-            normalization_quantile=0.99,
-            selected_markers=selected_markers,
-        )
-
-        # check if the normalization_dict works correctly when
-        # normalization_dict_path is given to make_tf_record
+        # create temporary folders with data for the tests
         conversion_matrix = prepare_conversion_matrix()
         conversion_matrix_path = os.path.join(temp_dir, "conversion_matrix.csv")
         conversion_matrix.to_csv(conversion_matrix_path, index=False)
-        data_prep = SegmentationTFRecords(
-            data_folders=["list", "of", "data", "folders"],
-            cell_table_path="list_to_cell_table_path",
+        norm_dict = {"CD11c": 1.0, "CD14": 1.0, "CD56": 1.0, "CD57": 1.0}
+        data_folders = prepare_test_data_folders(5, temp_dir, norm_dict.keys())
+
+        # check if the normalization_dict is loaded correctly in check_input
+        # when normalization_dict_path is given to init
+        with open(os.path.join(temp_dir, "norm_dict.json"), "w") as f:
+            json.dump(norm_dict, f)
+        data_prep = prep_object(
             conversion_matrix_path=conversion_matrix_path,
-            imaging_platform="imaging_platform",
-            dataset="dataset",
-            tile_size=[256, 256],
             tf_record_path=os.path.join(temp_dir, "tf_record_path"),
-            normalization_dict_path=os.path.join(temp_dir, "norm_dict_test.json"),
+            normalization_dict_path=os.path.join(temp_dir, "norm_dict.json"),
         )
-        data_prep.make_tf_record(
-            ["list", "of", "data", "folders"], os.path.join(temp_dir, "tf_record_path")
-        )
+        data_prep.check_input()
         assert norm_dict == data_prep.normalization_dict
 
-        # check if the normalization_dict works correctly when
-        # data_folders but no normalization_dict_path is given to make_tf_record
-        data_prep = SegmentationTFRecords(
+        # check if the normalization_dict is calculated in check_input when
+        # data_folders but no normalization_dict_path is given to init
+        data_prep = prep_object(
             data_folders=data_folders,
-            cell_table_path="list_to_cell_table_path",
             conversion_matrix_path=conversion_matrix_path,
-            imaging_platform="imaging_platform",
-            dataset="dataset",
-            tile_size=[256, 256],
             tf_record_path=os.path.join(temp_dir, "tf_record_path"),
         )
-        data_prep.make_tf_record(
-            ["list", "of", "data", "folders"], os.path.join(temp_dir, "tf_record_path")
-        )
+        data_prep.check_input()
         assert norm_dict == data_prep.normalization_dict
-        norm_dict_loaded = json.load(
-            open(os.path.join(temp_dir, "tf_record_path", "normalization_dict.json"))
-        )
-
-        # check if the normalization_dict is correctly written to the json file
-        assert norm_dict_loaded == norm_dict
 
 
-def test_instance_mask():
+def test_get_instance_mask():
     instance_mask = np.zeros([256, 256], dtype=np.uint16)
     instance_mask[0:32, 0:32] = 1
     instance_mask[0:32, 32:64] = 2
@@ -186,7 +159,7 @@ def test_instance_mask():
         imwrite(os.path.join(temp_dir, "cell_segmentation.tiff"), instance_mask)
         data_prep = prep_object()
         loaded_binary_img, loaded_img = data_prep.get_instance_mask(
-            data_folder=temp_dir, segmentation_fname="cell_segmentation"
+            data_folder=temp_dir
         )
         assert np.array_equal(loaded_img, instance_mask)
 
@@ -198,16 +171,4 @@ def test_instance_mask():
 
 
 def test_prepare_example():
-    data_prep = prep_object()
-    with tempfile.TemporaryDirectory() as temp_dir:
-        data_folders = prepare_test_data_folders(5, temp_dir, selected_markers=["CD8"])
-        norm_dict = data_prep.calculate_normalization_matrix(
-            data_folders=data_folders,
-            normalization_dict_path=os.path.join(temp_dir, "norm_dict_test.json"),
-            normalization_quantile=0.99,
-            selected_markers=["CD8"],
-        )
-        test_img = np.random.rand(256, 256)
-        imwrite(os.path.join(temp_dir, "CD8.tiff"), test_img)
-        imwrite(os.path.join(temp_dir, "cell_segmentation.tiff"), np.ones([256, 256]))
-        data_prep.prepare_example(temp_dir, "CD8")
+    pass
