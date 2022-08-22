@@ -1,7 +1,9 @@
+from tkinter import E
 from tifffile import imread
-from skimage.morphology import erosion
+from skimage.segmentation import find_boundaries
 import tensorflow as tf
 import numpy as np
+import pandas as pd
 import os
 import xarray
 from tqdm import tqdm
@@ -12,20 +14,12 @@ class SegmentationTFRecords:
     """Prepares the data for the segmentation model"""
 
     def __init__(
-        self,
-        data_folders,
-        cell_table_path,
-        conversion_matrix_path,
-        imaging_platform,
-        dataset,
-        tile_size,
-        tf_record_path,
-        selected_markers=None,
-        normalization_dict_path=None,
-        normalization_quantile=0.99,
-        cell_type_key="cluster_labels",
-        sample_key="SampleID",
-        cell_mask_key="cell_segmentation",
+        self, data_folders, cell_table_path, conversion_matrix_path,
+        imaging_platform, dataset, tile_size, tf_record_path,
+        selected_markers=None, normalization_dict_path=None,
+        normalization_quantile=0.99, cell_type_key="cluster_labels",
+        sample_key="SampleID", segmentation_fname="cell_segmentation",
+        segment_label_key="labels",
     ):
         """Initializes SegmentationTFRecords and loads everything except the images
 
@@ -55,20 +49,23 @@ class SegmentationTFRecords:
                 The key in the cell table that contains the cell type labels
             sample_key (str):
                 The key in the cell table that contains the sample name
-            cell_mask_key (str):
-                The key in the data_folder that contains the cell mask labels
+            segmentation_fname (str):
+                The filename in the data_folder that contains the cell instance segmentation
+            segment_label_key (str):
+                The key in the cell_table.csv that contains the cell segment labels
         """
-        pass
-        if normalization_dict_path is not None:
-            self.normalization_dict = json.load(open(normalization_dict_path, "r"))
-        else:
-            self.normalization_dict = self.calculate_normalization_matrix(
-                normalization_dict_path, normalization_quantile
-            )
-            self.cell_mask_key = cell_mask_key
-            self.sample_key = sample_key
-            self.dataset = dataset
-            self.imaging_platform = imaging_platform
+        self.selected_markers = selected_markers
+        self.data_folders = data_folders
+        self.normalization_dict_path = normalization_dict_path
+        self.conversion_matrix_path = conversion_matrix_path
+        self.normalization_quantile = normalization_quantile
+        self.segmentation_fname = segmentation_fname
+        self.segment_label_key = segment_label_key
+        self.sample_key = sample_key
+        self.dataset = dataset
+        self.imaging_platform = imaging_platform
+        self.tf_record_path = tf_record_path
+        self.cell_type_key = cell_type_key
 
     def get_image(self, data_folder, marker):
         """Loads the images from a single data_folder
@@ -86,7 +83,7 @@ class SegmentationTFRecords:
         img = imread(os.path.join(data_folder, marker + ".tiff"))
         return img
 
-    def get_instance_masks(self, data_folder, cell_mask_key):
+    def get_inst_binary_masks(self, data_folder):
         """Makes a binary mask from an instance mask by eroding it
 
         Args:
@@ -100,7 +97,10 @@ class SegmentationTFRecords:
             np.array:
                 The instance mask
         """
-        return np.zeros([500, 500]), np.zeros([500, 500])
+        instance_mask = imread(os.path.join(data_folder, self.segmentation_fname + ".tiff"))
+        edge = find_boundaries(instance_mask, mode="inner").astype(np.uint8)
+        interior = np.logical_and(edge == 0, instance_mask > 0).astype(np.uint8)
+        return interior, instance_mask
 
     def get_cell_types(self, sample_name):
         """Gets the cell types from the cell table for the given labels
@@ -161,9 +161,7 @@ class SegmentationTFRecords:
         # load and normalize the multiplexed image and masks
         mplex_img = self.get_image(data_folder, marker)
         mplex_img /= self.normalization_dict[marker]
-        binary_mask, instance_mask = self.get_instance_masks(
-            data_folder, self.cell_mask_key
-        )
+        binary_mask, instance_mask = self.get_inst_binary_masks(data_folder)
         # get the cell types and marker activity mask
         cell_types = self.get_cell_types(data_folder)
         marker_activity = self.get_marker_activity(cell_types, marker)
@@ -174,11 +172,11 @@ class SegmentationTFRecords:
             "mplex_img": mplex_img.astype(np.float32),
             "binary_mask": binary_mask.astype(np.uint8),
             "instance_mask": instance_mask.astype(np.uint16),
-            "cell_types": cell_types,
-            "marker_activity_mask": marker_activity_mask.astype(np.uint8),
             "imaging_platform": self.imaging_platform,
+            "marker_activity_mask": marker_activity_mask.astype(np.uint8),
             "dataset": self.dataset,
             "marker": marker,
+            "cell_types": cell_types,
         }
 
     def tile_example(example, tile_size):
@@ -192,7 +190,29 @@ class SegmentationTFRecords:
         """
         return None
 
-    def make_tf_record(self, data_folders, tf_record_path):
+    def check_input(self):
+        """Checks the input for correctness"""
+        # make tfrecord path
+        os.makedirs(self.tf_record_path, exist_ok=True)
+        # read conversion matrix
+        self.conversion_matrix = pd.read_csv(self.conversion_matrix_path)
+
+        # check if markers were selected or take all markers from conversion matrix
+        if self.selected_markers is None:
+            self.selected_markers = list(self.conversion_matrix.columns)
+        else:
+            self.selected_markers = self.selected_markers
+
+        # load or construct normalization dict
+        if str(self.normalization_dict_path).endswith(".json"):
+            self.normalization_dict = json.load(open(self.normalization_dict_path, "r"))
+        else:
+            self.normalization_dict = self.calculate_normalization_matrix(
+                self.data_folders,
+                self.selected_markers,
+            )
+
+    def make_tf_record(self, data_folders):
         """Iterates through the data_folders and loads, transforms and
         serializes a tfrecord example for each data_folder
 
@@ -200,11 +220,10 @@ class SegmentationTFRecords:
             tf_record_path (str):
                 The path to the tf record to make
         """
+
         return None
 
-    def calculate_normalization_matrix(
-        self, normalization_dict_path, normalization_quantile
-    ):
+    def calculate_normalization_matrix(self, data_folders, selected_markers):
         """Calculates the normalization matrix for the given data if it does not exist
         Args:
             normalization_dict_path (str):
@@ -215,4 +234,26 @@ class SegmentationTFRecords:
             dict:
                 The normalization dict
         """
-        return {"CD8": 0.0}
+        # iterate through the data_folders and calculate the quantiles
+        quantiles = {}
+        for data_folder in data_folders:
+            for marker in selected_markers:
+                img = self.get_image(data_folder, marker)
+                if marker not in quantiles:
+                    quantiles[marker] = []
+                quantiles[marker].append(np.quantile(img, self.normalization_quantile))
+
+        # calculate the normalization matrix
+        normalization_matrix = {}
+        for marker in selected_markers:
+            normalization_matrix[marker] = 1.0 / np.mean(quantiles[marker])
+
+        # check path and save the normalization matrix
+        if not str(self.normalization_dict_path).endswith(".json"):
+            self.normalization_dict_path = os.path.join(
+                self.tf_record_path, "normalization_dict.json"
+            )
+        with open(self.normalization_dict_path, "w") as f:
+            json.dump(normalization_matrix, f)
+        self.normalization_dict = normalization_matrix
+        return normalization_matrix
