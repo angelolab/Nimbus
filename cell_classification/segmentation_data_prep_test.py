@@ -11,8 +11,10 @@ from segmentation_data_prep import SegmentationTFRecords
 
 
 def prep_object(
-    data_folders=["path"], cell_table_path="path",
-    conversion_matrix_path="path", normalization_dict_path="path",
+    data_folders=["path"],
+    cell_table_path="path",
+    conversion_matrix_path="path",
+    normalization_dict_path="path",
     tf_record_path="path",
 ):
     data_prep = SegmentationTFRecords(
@@ -78,8 +80,35 @@ def prepare_cell_type_table():
     # prepare cell_table
     cell_type_table = pd.DataFrame(
         {
-            "SampleID": ["fov_1", "fov_1", "fov_1", "fov_2", "fov_2", "fov_2"],
-            "cluster_labels": ["stromal", "FAP", "NK", "CD4T", "CD14", "CD163"],
+            "SampleID": [
+                "fov_1",
+                "fov_1",
+                "fov_1",
+                "fov_1",
+                "fov_1",
+                "fov_1",
+                "fov_2",
+                "fov_2",
+                "fov_2",
+                "fov_2",
+                "fov_2",
+                "fov_2",
+            ],
+            "label": [1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6],
+            "cluster_labels": [
+                "stromal",
+                "FAP",
+                "NK",
+                "stromal",
+                "FAP",
+                "NK",
+                "CD4T",
+                "CD14",
+                "CD163",
+                "CD4T",
+                "CD14",
+                "CD163",
+            ],
         }
     )
 
@@ -194,8 +223,33 @@ def test_get_cell_types():
     fov_1_subset = data_prep.get_cell_types("fov_1")
 
     # check if the we get the right cell types for fov_1
-    assert np.array_equal(fov_1_subset["cluster_labels"], ["stromal", "FAP", "NK"])
-    assert np.array_equal(fov_1_subset["SampleID"], ["fov_1", "fov_1", "fov_1"])
+    for cell_type in fov_1_subset["cluster_labels"]:
+        assert cell_type in ["stromal", "FAP", "NK"]
+    assert np.unique(fov_1_subset["SampleID"]) == ["fov_1"]
+
+
+def test_get_marker_activity():
+    data_prep = prep_object()
+    cell_table = prepare_cell_type_table()
+    conversion_matrix = prepare_conversion_matrix()
+    data_prep.cell_type_table = cell_table
+    fov_1_subset = data_prep.get_cell_types("fov_1")
+    markers = ["CD11c", "CD14"]
+    out_dict = data_prep.get_marker_activity(
+        fov_1_subset.cluster_labels, conversion_matrix, markers
+    )
+
+    # check if the right markers are returned and dimensions fit
+    assert list(out_dict.keys()) == markers
+    assert len(out_dict["CD11c"]) == len(fov_1_subset.label)
+    assert len(out_dict["CD14"]) == len(fov_1_subset.label)
+
+    # check if the out_dict has the right marker activity values for a given cell
+    for i in range(len(fov_1_subset.label)):
+        assert (
+            out_dict["CD11c"][i] == conversion_matrix.loc[fov_1_subset.cluster_labels[i], "CD11c"]
+        )
+        assert out_dict["CD14"][i] == conversion_matrix.loc[fov_1_subset.cluster_labels[i], "CD14"]
 
 
 def test_prepare_example():

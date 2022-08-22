@@ -14,11 +14,20 @@ class SegmentationTFRecords:
     """Prepares the data for the segmentation model"""
 
     def __init__(
-        self, data_folders, cell_table_path, conversion_matrix_path,
-        imaging_platform, dataset, tile_size, tf_record_path,
-        selected_markers=None, normalization_dict_path=None,
-        normalization_quantile=0.99, cell_type_key="cluster_labels",
-        sample_key="SampleID", segmentation_fname="cell_segmentation",
+        self,
+        data_folders,
+        cell_table_path,
+        conversion_matrix_path,
+        imaging_platform,
+        dataset,
+        tile_size,
+        tf_record_path,
+        selected_markers=None,
+        normalization_dict_path=None,
+        normalization_quantile=0.99,
+        cell_type_key="cluster_labels",
+        sample_key="SampleID",
+        segmentation_fname="cell_segmentation",
         segment_label_key="labels",
     ):
         """Initializes SegmentationTFRecords and loads everything except the images
@@ -116,19 +125,28 @@ class SegmentationTFRecords:
 
         return self.cell_type_table[self.cell_type_table.SampleID == sample_name]
 
-    def get_marker_activity(self, cell_types, marker):
+    def get_marker_activity(self, cell_types, conversion_matrix, markers):
         """Gets the marker activity for the given labels
         Args:
-            cell_types list:
+            cell_types array:
                 The cell types to get the marker activity for
             marker (str, list):
                 The markers to get the activity for
+            conversion_matrix (pd.DataFrame):
+                The conversion matrix to use for the lookup
         Returns:
-            list:
+            np.array:
                 The marker activity for the given labels, 1 if the marker is active, 0
                 otherwise and -1 if the marker is not specific enough to be considered active
         """
-        return None
+        if isinstance(markers, str):
+            markers = [markers]
+
+        out_dict = {}
+        for marker in markers:
+            out_dict[marker] = conversion_matrix.loc[cell_types, marker].values
+
+        return out_dict
 
     def get_marker_activity_mask(self, instance_mask, cell_types, marker_activity):
         """Makes a mask from the marker activity
