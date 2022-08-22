@@ -1,4 +1,3 @@
-import tempfile
 import pytest
 import numpy as np
 from augmentation_pipeline import augment_images, get_augmentation_pipeline
