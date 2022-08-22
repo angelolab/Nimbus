@@ -66,6 +66,7 @@ class SegmentationTFRecords:
         self.imaging_platform = imaging_platform
         self.tf_record_path = tf_record_path
         self.cell_type_key = cell_type_key
+        self.cell_table_path = cell_table_path
 
     def get_image(self, data_folder, marker):
         """Loads the images from a single data_folder
@@ -112,7 +113,8 @@ class SegmentationTFRecords:
             df:
                 The labels and corresponding cell types for the given sample
         """
-        return None
+
+        return self.cell_type_table[self.cell_type_table.SampleID == sample_name]
 
     def get_marker_activity(self, cell_types, marker):
         """Gets the marker activity for the given labels
@@ -211,6 +213,9 @@ class SegmentationTFRecords:
                 self.data_folders,
                 self.selected_markers,
             )
+
+        # load cell_types.csv
+        self.cell_type_table = pd.read_csv(self.cell_table_path)
 
     def make_tf_record(self, data_folders):
         """Iterates through the data_folders and loads, transforms and

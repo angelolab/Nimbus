@@ -73,6 +73,19 @@ def prepare_test_data_folders(num_folders, temp_dir, selected_markers, random=Fa
     return data_folders
 
 
+def prepare_cell_type_table():
+
+    # prepare cell_table
+    cell_type_table = pd.DataFrame(
+        {
+            "SampleID": ["fov_1", "fov_1", "fov_1", "fov_2", "fov_2", "fov_2"],
+            "cluster_labels": ["stromal", "FAP", "NK", "CD4T", "CD14", "CD163"],
+        }
+    )
+
+    return cell_type_table
+
+
 def test_calculate_normalization_matrix():
 
     # instantiate data_prep, conversion_matrix and markers
@@ -115,6 +128,9 @@ def test_check_input():
         conversion_matrix.to_csv(conversion_matrix_path, index=False)
         norm_dict = {"CD11c": 1.0, "CD14": 1.0, "CD56": 1.0, "CD57": 1.0}
         data_folders = prepare_test_data_folders(5, temp_dir, norm_dict.keys())
+        cell_table_path = os.path.join(temp_dir, "cell_type_table.csv")
+        cell_table = prepare_cell_type_table()
+        cell_table.to_csv(cell_table_path, index=False)
 
         # check if the normalization_dict is loaded correctly in check_input
         # when normalization_dict_path is given to init
@@ -124,6 +140,7 @@ def test_check_input():
             conversion_matrix_path=conversion_matrix_path,
             tf_record_path=os.path.join(temp_dir, "tf_record_path"),
             normalization_dict_path=os.path.join(temp_dir, "norm_dict.json"),
+            cell_table_path=cell_table_path,
         )
         data_prep.check_input()
         assert norm_dict == data_prep.normalization_dict
@@ -134,6 +151,7 @@ def test_check_input():
             data_folders=data_folders,
             conversion_matrix_path=conversion_matrix_path,
             tf_record_path=os.path.join(temp_dir, "tf_record_path"),
+            cell_table_path=cell_table_path,
         )
         data_prep.check_input()
         assert norm_dict == data_prep.normalization_dict
@@ -166,6 +184,18 @@ def test_get_inst_binary_masks():
 
         # check if binary mask is eroded correctly
         assert np.array_equal(loaded_binary_img, instance_mask_eroded)
+
+
+def test_get_cell_types():
+
+    data_prep = prep_object()
+    cell_table = prepare_cell_type_table()
+    data_prep.cell_type_table = cell_table
+    fov_1_subset = data_prep.get_cell_types("fov_1")
+
+    # check if the we get the right cell types for fov_1
+    assert np.array_equal(fov_1_subset["cluster_labels"], ["stromal", "FAP", "NK"])
+    assert np.array_equal(fov_1_subset["SampleID"], ["fov_1", "fov_1", "fov_1"])
 
 
 def test_prepare_example():
