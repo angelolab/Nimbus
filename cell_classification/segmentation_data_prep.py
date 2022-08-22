@@ -83,7 +83,7 @@ class SegmentationTFRecords:
         img = imread(os.path.join(data_folder, marker + ".tiff"))
         return img
 
-    def get_instance_mask(self, data_folder):
+    def get_inst_binary_masks(self, data_folder):
         """Makes a binary mask from an instance mask by eroding it
 
         Args:
@@ -97,9 +97,7 @@ class SegmentationTFRecords:
             np.array:
                 The instance mask
         """
-        instance_mask = imread(
-            os.path.join(data_folder, self.segmentation_fname + ".tiff")
-        )
+        instance_mask = imread(os.path.join(data_folder, self.segmentation_fname + ".tiff"))
         edge = find_boundaries(instance_mask, mode="inner").astype(np.uint8)
         interior = np.logical_and(edge == 0, instance_mask > 0).astype(np.uint8)
         return interior, instance_mask
@@ -163,7 +161,7 @@ class SegmentationTFRecords:
         # load and normalize the multiplexed image and masks
         mplex_img = self.get_image(data_folder, marker)
         mplex_img /= self.normalization_dict[marker]
-        binary_mask, instance_mask = self.get_instance_mask(data_folder)
+        binary_mask, instance_mask = self.get_inst_binary_masks(data_folder)
         # get the cell types and marker activity mask
         cell_types = self.get_cell_types(data_folder)
         marker_activity = self.get_marker_activity(cell_types, marker)
@@ -174,11 +172,11 @@ class SegmentationTFRecords:
             "mplex_img": mplex_img.astype(np.float32),
             "binary_mask": binary_mask.astype(np.uint8),
             "instance_mask": instance_mask.astype(np.uint16),
-            "cell_types": cell_types,
-            "marker_activity_mask": marker_activity_mask.astype(np.uint8),
             "imaging_platform": self.imaging_platform,
+            "marker_activity_mask": marker_activity_mask.astype(np.uint8),
             "dataset": self.dataset,
             "marker": marker,
+            "cell_types": cell_types,
         }
 
     def tile_example(example, tile_size):
@@ -202,8 +200,6 @@ class SegmentationTFRecords:
         # check if markers were selected or take all markers from conversion matrix
         if self.selected_markers is None:
             self.selected_markers = list(self.conversion_matrix.columns)
-            if self.cell_type_key in self.selected_markers:
-                self.selected_markers.remove(self.cell_type_key)
         else:
             self.selected_markers = self.selected_markers
 
