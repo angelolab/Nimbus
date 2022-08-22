@@ -1,5 +1,3 @@
-from calendar import c
-from genericpath import exists
 import os
 import pytest
 import tempfile
@@ -11,10 +9,8 @@ from segmentation_data_prep import SegmentationTFRecords
 
 
 def prep_object(
-    data_folders=["path"],
-    cell_table_path="path",
-    conversion_matrix_path="path",
-    normalization_dict_path="path",
+    data_folders=["path"], cell_table_path="path",
+    conversion_matrix_path="path", normalization_dict_path="path",
     tf_record_path="path",
 ):
     data_prep = SegmentationTFRecords(
@@ -80,35 +76,10 @@ def prepare_cell_type_table():
     # prepare cell_table
     cell_type_table = pd.DataFrame(
         {
-            "SampleID": [
-                "fov_1",
-                "fov_1",
-                "fov_1",
-                "fov_1",
-                "fov_1",
-                "fov_1",
-                "fov_2",
-                "fov_2",
-                "fov_2",
-                "fov_2",
-                "fov_2",
-                "fov_2",
-            ],
+            "SampleID": ["fov_1"]*6 + ["fov_2"]*6,
             "label": [1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6],
-            "cluster_labels": [
-                "stromal",
-                "FAP",
-                "NK",
-                "stromal",
-                "FAP",
-                "NK",
-                "CD4T",
-                "CD14",
-                "CD163",
-                "CD4T",
-                "CD14",
-                "CD163",
-            ],
+            "cluster_labels": ["stromal", "FAP", "NK"]*2 +
+            ["CD4T", "CD14", "CD163"]*2
         }
     )
 
@@ -250,6 +221,42 @@ def test_get_marker_activity():
             out_dict["CD11c"][i] == conversion_matrix.loc[fov_1_subset.cluster_labels[i], "CD11c"]
         )
         assert out_dict["CD14"][i] == conversion_matrix.loc[fov_1_subset.cluster_labels[i], "CD14"]
+
+
+def test_get_marker_activity_mask():
+    data_prep = prep_object()
+    markers = ["CD11c", "CD14"]
+    marker_activity = {"CD11c": [1, 0, 0, 0, 0, 1], "CD14": [0, 1, 1, 1, 1, 0]}
+    instance_mask = np.zeros([256, 256], dtype=np.uint16)
+    instance_mask[0:32, 0:32] = 1
+    instance_mask[0:32, 32:64] = 2
+    instance_mask[0:32, 64:96] = 3
+    instance_mask[32:64, 0:32] = 4
+    instance_mask[64:96, 64:96] = 5
+    instance_mask[128:160, 128:160] = 6
+    binary_mask = (instance_mask > 0).astype(np.uint8)
+
+    marker_activity_mask = data_prep.get_marker_activity_mask(
+        instance_mask, binary_mask, marker_activity, markers
+    )
+
+    # check if the right spatial dimensions got returned
+    assert marker_activity_mask.shape[:-1] == (256, 256)
+
+    # check if for each marker one channel got returned
+    assert marker_activity_mask.shape[-1] == len(markers)
+
+    # check if the right marker activity values are returned
+    instance_mask[binary_mask < 1] = 0
+    for i in np.unique(instance_mask):
+        if i == 0:
+            continue
+        assert (
+            marker_activity_mask[instance_mask == i, 0] == marker_activity[markers[0]][i - 1]
+        ).all()
+        assert (
+            marker_activity_mask[instance_mask == i, 1] == marker_activity[markers[1]][i - 1]
+        ).any()
 
 
 def test_prepare_example():

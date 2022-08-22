@@ -14,20 +14,11 @@ class SegmentationTFRecords:
     """Prepares the data for the segmentation model"""
 
     def __init__(
-        self,
-        data_folders,
-        cell_table_path,
-        conversion_matrix_path,
-        imaging_platform,
-        dataset,
-        tile_size,
-        tf_record_path,
-        selected_markers=None,
-        normalization_dict_path=None,
-        normalization_quantile=0.99,
-        cell_type_key="cluster_labels",
-        sample_key="SampleID",
-        segmentation_fname="cell_segmentation",
+        self, data_folders, cell_table_path, conversion_matrix_path,
+        imaging_platform, dataset, tile_size, tf_record_path,
+        selected_markers=None, normalization_dict_path=None,
+        normalization_quantile=0.99, cell_type_key="cluster_labels",
+        sample_key="SampleID", segmentation_fname="cell_segmentation",
         segment_label_key="labels",
     ):
         """Initializes SegmentationTFRecords and loads everything except the images
@@ -148,7 +139,7 @@ class SegmentationTFRecords:
 
         return out_dict
 
-    def get_marker_activity_mask(self, instance_mask, cell_types, marker_activity):
+    def get_marker_activity_mask(self, instance_mask, binary_mask, marker_activity, markers):
         """Makes a mask from the marker activity
 
         Args:
@@ -162,7 +153,16 @@ class SegmentationTFRecords:
             np.array:
                 The marker activity mask
         """
-        return np.zeros([500, 500])
+        out_list = []
+        if isinstance(markers, str):
+            markers = [markers]
+        for marker in markers:
+            out_mask = np.zeros_like(instance_mask)
+            for label, activity in enumerate(marker_activity[marker], 1):
+                out_mask[instance_mask == label] = activity
+            out_mask[binary_mask == 0] = 0
+            out_list.append(out_mask)
+        return np.stack(out_list, axis=-1)
 
     def prepare_example(self, data_folder, marker):
         """Prepares a tfrecord example for the given data_folder and marker
