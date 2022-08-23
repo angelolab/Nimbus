@@ -21,11 +21,16 @@ def augment_images(images, masks, augmentation_pipeline):
         np.array:
             The augmented masks
     """
-    masks = [SegmentationMapsOnImage(mask, shape=images.shape[1:-1]) for mask in masks]
+    masks = [SegmentationMapsOnImage(mask, shape=mask.shape) for mask in masks]
     batch = Batch(images=images, segmentation_maps=masks)
     batch = augmentation_pipeline.augment_batch_(batch)
-    augmented_masks = [np.squeeze(mask.arr) for mask in batch.segmentation_maps_aug]
-    return np.stack(batch.images_aug, 0), np.squeeze(np.stack(augmented_masks, 0))
+    augmented_masks = [mask.arr for mask in batch.segmentation_maps_aug]
+    augmented_masks = np.stack(augmented_masks, 0)
+
+    # remove additional channel from single channel masks
+    if augmented_masks.shape[-1] == 1:
+        augmented_masks = np.squeeze(augmented_masks, -1)
+    return np.stack(batch.images_aug, 0), augmented_masks
 
 
 def get_augmentation_pipeline(params):
@@ -40,8 +45,10 @@ def get_augmentation_pipeline(params):
     """
     augmentation_pipeline = iaa.Sequential(
         [
+            # random mirroring along horizontal and vertical axis
             iaa.Fliplr(params["flip_prob"]),
             iaa.Flipud(params["flip_prob"]),
+            # random zooming and shearing
             iaa.Sometimes(
                 params["affine_prob"],
                 iaa.Affine(
@@ -49,13 +56,16 @@ def get_augmentation_pipeline(params):
                     shear=(-params["shear_angle"], params["shear_angle"]),
                 ),
             ),
+            # elastic transformations that apply a water-like effect onto the image
             iaa.Sometimes(
                 params["elastic_prob"],
                 iaa.ElasticTransformation(
                     alpha=params["elastic_alpha"], sigma=params["elastic_sigma"]
                 ),
             ),
+            # 90 degree rotations
             iaa.Rot90(params["rotate_count"]),
+            # random gaussian noise added to the image
             iaa.Sometimes(
                 params["gaussian_noise_prob"],
                 iaa.AdditiveGaussianNoise(
@@ -63,12 +73,14 @@ def get_augmentation_pipeline(params):
                     scale=(params["gaussian_noise_min"], params["gaussian_noise_max"]),
                 ),
             ),
+            # random blurring with a gaussian filter
             iaa.Sometimes(
                 params["gaussian_blur_prob"],
                 iaa.GaussianBlur(
                     sigma=(params["gaussian_blur_min"], params["gaussian_blur_max"]),
                 ),
             ),
+            # random up-scaling and down-scaling of the image intensities
             iaa.Sometimes(
                 params["contrast_prob"],
                 iaa.LinearContrast(
