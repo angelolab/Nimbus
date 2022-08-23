@@ -36,7 +36,7 @@ def test_augment_images():
     params = get_params()
     augmentation_pipeline = get_augmentation_pipeline(params)
     images = np.zeros([3, 100, 100, 2], dtype=np.float32)
-    masks = np.zeros([3, 100, 100], dtype=np.int32)
+    masks = np.zeros([3, 100, 100, 2], dtype=np.int32)
     images[0, :50, :50, :] = 10.1
     images[1, 50:, 50:, :] = 201.12
     masks[0, :50, :50] = 1

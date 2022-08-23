@@ -24,8 +24,8 @@ def augment_images(images, masks, augmentation_pipeline):
     masks = [SegmentationMapsOnImage(mask, shape=images.shape[1:-1]) for mask in masks]
     batch = Batch(images=images, segmentation_maps=masks)
     batch = augmentation_pipeline.augment_batch_(batch)
-    augmented_masks = [np.squeeze(mask.arr, -1) for mask in batch.segmentation_maps_aug]
-    return np.stack(batch.images_aug, 0), np.stack(augmented_masks, 0)
+    augmented_masks = [np.squeeze(mask.arr) for mask in batch.segmentation_maps_aug]
+    return np.stack(batch.images_aug, 0), np.squeeze(np.stack(augmented_masks, 0))
 
 
 def get_augmentation_pipeline(params):
