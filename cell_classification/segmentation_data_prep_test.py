@@ -9,18 +9,14 @@ from segmentation_data_prep import SegmentationTFRecords
 
 
 def prep_object(
-    data_folders=["path"], cell_table_path="path",
-    conversion_matrix_path="path", normalization_dict_path="path",
-    tf_record_path="path",
+    data_folders=["path"], cell_table_path="path", conversion_matrix_path="path",
+    normalization_dict_path="path", tf_record_path="path",
 ):
     data_prep = SegmentationTFRecords(
-        data_folders=data_folders,
-        cell_table_path=cell_table_path,
+        data_folders=data_folders, cell_table_path=cell_table_path,
         conversion_matrix_path=conversion_matrix_path,
-        imaging_platform="imaging_platform",
-        dataset="dataset",
-        tile_size=[256, 256],
-        tf_record_path=tf_record_path,
+        imaging_platform="imaging_platform", dataset="dataset",
+        tile_size=[256, 256], tf_record_path=tf_record_path,
         normalization_dict_path=normalization_dict_path,
     )
     return data_prep
@@ -76,10 +72,9 @@ def prepare_cell_type_table():
     # prepare cell_table
     cell_type_table = pd.DataFrame(
         {
-            "SampleID": ["fov_1"]*6 + ["fov_2"]*6,
-            "label": [1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6],
-            "cluster_labels": ["stromal", "FAP", "NK"]*2 +
-            ["CD4T", "CD14", "CD163"]*2
+            "SampleID": ["fov_1"] * 6 + ["fov_2"] * 6,
+            "labels": [1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6],
+            "cluster_labels": ["stromal", "FAP", "NK"] * 2 + ["CD4T", "CD14", "CD163"] * 2,
         }
     )
 
@@ -194,33 +189,35 @@ def test_get_marker_activity():
     marker = "CD11c"
     sample_name = "fov_1"
     fov_1_subset = cell_table[cell_table.SampleID == sample_name]
-    marker_activity = data_prep.get_marker_activity(
-        sample_name, conversion_matrix, marker
-    )
+    marker_activity = data_prep.get_marker_activity(sample_name, conversion_matrix, marker)
 
-    # check if the we get the correct marker activity
-    assert len(marker_activity) == len(fov_1_subset.label)
+    # check if the we get marker_acitivity for all labels in the fov_1 subset
+    assert np.array_equal(marker_activity.labels, fov_1_subset.labels)
 
-    # check if the out_dict has the right marker activity values for a given cell
-    for i in range(len(fov_1_subset.label)):
+    # check if the df has the right marker activity values for a given cell
+    for i in range(len(fov_1_subset.labels)):
         assert (
-            marker_activity[i] == conversion_matrix.loc[fov_1_subset.cluster_labels[i], "CD11c"]
+            marker_activity.activity[i]
+            == conversion_matrix.loc[fov_1_subset.cluster_labels[i], "CD11c"]
         )
 
 
 def test_get_marker_activity_mask():
     data_prep = prep_object()
-    marker = "CD11c"
-    marker_activity = [1, 0, 0, 0, 0, 1]
+    marker_activity = pd.DataFrame(
+        {
+            "labels": [1, 2, 5, 7, 9, 11],
+            "activity": [1, 0, 0, 0, 0, 1],
+        }
+    )
     instance_mask = np.zeros([256, 256], dtype=np.uint16)
     instance_mask[0:32, 0:32] = 1
     instance_mask[0:32, 32:64] = 2
-    instance_mask[0:32, 64:96] = 3
-    instance_mask[32:64, 0:32] = 4
-    instance_mask[64:96, 64:96] = 5
-    instance_mask[128:160, 128:160] = 6
+    instance_mask[0:32, 64:96] = 5
+    instance_mask[32:64, 0:32] = 7
+    instance_mask[64:96, 64:96] = 9
+    instance_mask[128:160, 128:160] = 11
     binary_mask = (instance_mask > 0).astype(np.uint8)
-
     marker_activity_mask = data_prep.get_marker_activity_mask(
         instance_mask, binary_mask, marker_activity
     )
@@ -229,11 +226,12 @@ def test_get_marker_activity_mask():
     assert marker_activity_mask.shape == instance_mask.shape
 
     # check if the right marker activity values are returned
-    instance_mask[binary_mask < 1] = 0
     for i in np.unique(instance_mask):
         if i == 0:
             continue
-        assert (marker_activity_mask[instance_mask == i] == marker_activity[i - 1]).all()
+        assert (
+            marker_activity_mask[instance_mask == i]
+            == int(marker_activity.activity[marker_activity.labels == i])).all()
 
 
 def test_prepare_example():

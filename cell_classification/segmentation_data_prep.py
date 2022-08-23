@@ -119,7 +119,14 @@ class SegmentationTFRecords:
         """
         sample_subset = self.cell_type_table[self.cell_type_table.SampleID == sample_name]
         cell_types = sample_subset[self.cell_type_key].values
-        return conversion_matrix.loc[cell_types, marker].values
+
+        df = pd.DataFrame(
+            {
+                "labels": sample_subset[self.segment_label_key],
+                "activity": conversion_matrix.loc[cell_types, marker].values,
+            }
+        )
+        return df
 
     def get_marker_activity_mask(self, instance_mask, binary_mask, marker_activity):
         """Makes a mask from the marker activity
@@ -136,7 +143,7 @@ class SegmentationTFRecords:
                 The marker activity mask
         """
         out_mask = np.zeros_like(instance_mask)
-        for label, activity in enumerate(marker_activity, 1):
+        for label, activity in zip(marker_activity.labels, marker_activity.activity):
             out_mask[instance_mask == label] = activity
         out_mask[binary_mask == 0] = 0
         return out_mask
