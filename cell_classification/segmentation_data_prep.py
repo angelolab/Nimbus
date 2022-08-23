@@ -66,6 +66,7 @@ class SegmentationTFRecords:
         self.imaging_platform = imaging_platform
         self.tf_record_path = tf_record_path
         self.cell_type_key = cell_type_key
+        self.cell_table_path = cell_table_path
 
     def get_image(self, data_folder, marker):
         """Loads the images from a single data_folder
@@ -102,47 +103,50 @@ class SegmentationTFRecords:
         interior = np.logical_and(edge == 0, instance_mask > 0).astype(np.uint8)
         return interior, instance_mask
 
-    def get_cell_types(self, sample_name):
-        """Gets the cell types from the cell table for the given labels
-        Args:
-            sample_name (str):
-                The name of the sample we use for look up in column sample_key
-                in cell_type.csv
-        Returns:
-            df:
-                The labels and corresponding cell types for the given sample
-        """
-        return None
-
-    def get_marker_activity(self, cell_types, marker):
+    def get_marker_activity(self, sample_name, conversion_matrix, marker):
         """Gets the marker activity for the given labels
         Args:
-            cell_types list:
-                The cell types to get the marker activity for
+            sample_name (str):
+                The name of the sample
+            conversion_matrix (pd.DataFrame):
+                The conversion matrix to use for the lookup
             marker (str, list):
                 The markers to get the activity for
         Returns:
-            list:
+            np.array:
                 The marker activity for the given labels, 1 if the marker is active, 0
                 otherwise and -1 if the marker is not specific enough to be considered active
         """
-        return None
+        sample_subset = self.cell_type_table[self.cell_type_table.SampleID == sample_name]
+        cell_types = sample_subset[self.cell_type_key].values
 
-    def get_marker_activity_mask(self, instance_mask, cell_types, marker_activity):
+        df = pd.DataFrame(
+            {
+                "labels": sample_subset[self.segment_label_key],
+                "activity": conversion_matrix.loc[cell_types, marker].values,
+            }
+        )
+        return df
+
+    def get_marker_activity_mask(self, instance_mask, binary_mask, marker_activity):
         """Makes a mask from the marker activity
 
         Args:
             instance_mask (np.array):
                 The instance mask to make the marker activity mask for
-            cell_types list:
-                The cell types of the cells in the instance_mask
+            binary_mask (np.array):
+                The binary mask to make the marker activity mask for
             marker_activity list:
                 The marker activity that maps to the cell types
         Returns:
             np.array:
                 The marker activity mask
         """
-        return np.zeros([500, 500])
+        out_mask = np.zeros_like(instance_mask)
+        for label, activity in zip(marker_activity.labels, marker_activity.activity):
+            out_mask[instance_mask == label] = activity
+        out_mask[binary_mask == 0] = 0
+        return out_mask
 
     def prepare_example(self, data_folder, marker):
         """Prepares a tfrecord example for the given data_folder and marker
@@ -162,6 +166,7 @@ class SegmentationTFRecords:
         mplex_img = self.get_image(data_folder, marker)
         mplex_img /= self.normalization_dict[marker]
         binary_mask, instance_mask = self.get_inst_binary_masks(data_folder)
+
         # get the cell types and marker activity mask
         cell_types = self.get_cell_types(data_folder)
         marker_activity = self.get_marker_activity(cell_types, marker)
@@ -194,6 +199,7 @@ class SegmentationTFRecords:
         """Checks the input for correctness"""
         # make tfrecord path
         os.makedirs(self.tf_record_path, exist_ok=True)
+
         # read conversion matrix
         self.conversion_matrix = pd.read_csv(self.conversion_matrix_path)
 
@@ -211,6 +217,9 @@ class SegmentationTFRecords:
                 self.data_folders,
                 self.selected_markers,
             )
+
+        # load cell_types.csv
+        self.cell_type_table = pd.read_csv(self.cell_table_path)
 
     def make_tf_record(self, data_folders):
         """Iterates through the data_folders and loads, transforms and
