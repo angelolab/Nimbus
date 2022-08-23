@@ -21,15 +21,15 @@ def augment_images(images, masks, augmentation_pipeline):
         np.array:
             The augmented masks
     """
-    masks = [SegmentationMapsOnImage(mask, shape=mask.shape) for mask in masks]
-    batch = Batch(images=images, segmentation_maps=masks)
+    masks_ = [SegmentationMapsOnImage(mask, shape=mask.shape) for mask in masks]
+    batch = Batch(images=images, segmentation_maps=masks_)
     batch = augmentation_pipeline.augment_batch_(batch)
     augmented_masks = [mask.arr for mask in batch.segmentation_maps_aug]
     augmented_masks = np.stack(augmented_masks, 0)
 
     # remove additional channel from single channel masks
-    if augmented_masks.shape[-1] == 1:
-        augmented_masks = np.squeeze(augmented_masks, -1)
+    if augmented_masks.shape != masks.shape:
+        augmented_masks = np.reshape(augmented_masks, masks.shape)
     return np.stack(batch.images_aug, 0), augmented_masks
 
 
