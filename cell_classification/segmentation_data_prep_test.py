@@ -186,47 +186,32 @@ def test_get_inst_binary_masks():
         assert np.array_equal(loaded_binary_img, instance_mask_eroded)
 
 
-def test_get_cell_types():
-
-    data_prep = prep_object()
-    cell_table = prepare_cell_type_table()
-    data_prep.cell_type_table = cell_table
-    fov_1_subset = data_prep.get_cell_types("fov_1")
-
-    # check if the we get the right cell types for fov_1
-    for cell_type in fov_1_subset["cluster_labels"]:
-        assert cell_type in ["stromal", "FAP", "NK"]
-    assert np.unique(fov_1_subset["SampleID"]) == ["fov_1"]
-
-
 def test_get_marker_activity():
     data_prep = prep_object()
     cell_table = prepare_cell_type_table()
     conversion_matrix = prepare_conversion_matrix()
     data_prep.cell_type_table = cell_table
-    fov_1_subset = data_prep.get_cell_types("fov_1")
-    markers = ["CD11c", "CD14"]
-    out_dict = data_prep.get_marker_activity(
-        fov_1_subset.cluster_labels, conversion_matrix, markers
+    marker = "CD11c"
+    sample_name = "fov_1"
+    fov_1_subset = cell_table[cell_table.SampleID == sample_name]
+    marker_activity = data_prep.get_marker_activity(
+        sample_name, conversion_matrix, marker
     )
 
-    # check if the right markers are returned and dimensions fit
-    assert list(out_dict.keys()) == markers
-    assert len(out_dict["CD11c"]) == len(fov_1_subset.label)
-    assert len(out_dict["CD14"]) == len(fov_1_subset.label)
+    # check if the we get the correct marker activity
+    assert len(marker_activity) == len(fov_1_subset.label)
 
     # check if the out_dict has the right marker activity values for a given cell
     for i in range(len(fov_1_subset.label)):
         assert (
-            out_dict["CD11c"][i] == conversion_matrix.loc[fov_1_subset.cluster_labels[i], "CD11c"]
+            marker_activity[i] == conversion_matrix.loc[fov_1_subset.cluster_labels[i], "CD11c"]
         )
-        assert out_dict["CD14"][i] == conversion_matrix.loc[fov_1_subset.cluster_labels[i], "CD14"]
 
 
 def test_get_marker_activity_mask():
     data_prep = prep_object()
-    markers = ["CD11c", "CD14"]
-    marker_activity = {"CD11c": [1, 0, 0, 0, 0, 1], "CD14": [0, 1, 1, 1, 1, 0]}
+    marker = "CD11c"
+    marker_activity = [1, 0, 0, 0, 0, 1]
     instance_mask = np.zeros([256, 256], dtype=np.uint16)
     instance_mask[0:32, 0:32] = 1
     instance_mask[0:32, 32:64] = 2
@@ -237,26 +222,18 @@ def test_get_marker_activity_mask():
     binary_mask = (instance_mask > 0).astype(np.uint8)
 
     marker_activity_mask = data_prep.get_marker_activity_mask(
-        instance_mask, binary_mask, marker_activity, markers
+        instance_mask, binary_mask, marker_activity
     )
 
     # check if the right spatial dimensions got returned
-    assert marker_activity_mask.shape[:-1] == (256, 256)
-
-    # check if for each marker one channel got returned
-    assert marker_activity_mask.shape[-1] == len(markers)
+    assert marker_activity_mask.shape == instance_mask.shape
 
     # check if the right marker activity values are returned
     instance_mask[binary_mask < 1] = 0
     for i in np.unique(instance_mask):
         if i == 0:
             continue
-        assert (
-            marker_activity_mask[instance_mask == i, 0] == marker_activity[markers[0]][i - 1]
-        ).all()
-        assert (
-            marker_activity_mask[instance_mask == i, 1] == marker_activity[markers[1]][i - 1]
-        ).any()
+        assert (marker_activity_mask[instance_mask == i] == marker_activity[i - 1]).all()
 
 
 def test_prepare_example():
