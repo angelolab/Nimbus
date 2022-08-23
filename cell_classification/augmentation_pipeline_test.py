@@ -3,34 +3,25 @@ import numpy as np
 from augmentation_pipeline import augment_images, get_augmentation_pipeline
 import imgaug.augmenters as iaa
 
+parametrize = pytest.mark.parametrize
+
 
 def get_params():
     return {
         # flip
         "flip_prob": 1.0,
         # affine
-        "affine_prob": 1.0,
-        "scale_min": 0.5,
-        "scale_max": 1.5,
-        "shear_angle": 10,
+        "affine_prob": 1.0, "scale_min": 0.5, "scale_max": 1.5, "shear_angle": 10,
         # elastic
-        "elastic_prob": 1.0,
-        "elastic_alpha": [0, 5.0],
-        "elastic_sigma": 0.5,
+        "elastic_prob": 1.0, "elastic_alpha": [0, 5.0], "elastic_sigma": 0.5,
         # rotate
         "rotate_count": [0, 3],
         # gaussian noise
-        "gaussian_noise_prob": 1.0,
-        "gaussian_noise_min": 0.1,
-        "gaussian_noise_max": 0.5,
+        "gaussian_noise_prob": 1.0, "gaussian_noise_min": 0.1, "gaussian_noise_max": 0.5,
         # gaussian blur
-        "gaussian_blur_prob": 0.0,
-        "gaussian_blur_min": 0.1,
-        "gaussian_blur_max": 0.5,
+        "gaussian_blur_prob": 0.0, "gaussian_blur_min": 0.1, "gaussian_blur_max": 0.5,
         # contrast aug
-        "contrast_prob": 0.0,
-        "contrast_min": 0.1,
-        "contrast_max": 2.0,
+        "contrast_prob": 0.0, "contrast_min": 0.1, "contrast_max": 2.0,
     }
 
 
@@ -40,15 +31,17 @@ def test_get_augmentation_pipeline():
     assert type(augmentation_pipeline) == iaa.Sequential
 
 
-def test_augment_images():
+@parametrize("batch_num", [1, 2, 3])
+@parametrize("chan_num", [1, 2, 3])
+def test_augment_images(batch_num, chan_num):
     params = get_params()
     augmentation_pipeline = get_augmentation_pipeline(params)
-    images = np.zeros([3, 100, 100, 2], dtype=np.float32)
-    masks = np.zeros([3, 100, 100, 2], dtype=np.int32)
+    images = np.zeros([batch_num, 100, 100, chan_num], dtype=np.float32)
+    masks = np.zeros([batch_num, 100, 100, chan_num], dtype=np.int32)
     images[0, :50, :50, :] = 10.1
-    images[1, 50:, 50:, :] = 201.12
+    images[0, 50:, 50:, :] = 201.12
     masks[0, :50, :50] = 1
-    masks[1, 50:, 50:] = 2
+    masks[0, 50:, 50:] = 2
     augmented_images, augmented_masks = augment_images(images, masks, augmentation_pipeline)
 
     # check if right types and shapes are returned
@@ -71,17 +64,7 @@ def test_augment_images():
     assert np.abs(augmented_images[augmented_masks == 1].mean() - images[masks == 1].mean()) < 1
     assert np.abs(augmented_images[augmented_masks == 2].mean() - images[masks == 2].mean()) < 5
 
-    # check control flow for different number of samples per batch and channels
-    for b in [1, 2, 3]:
-        for c in [1, 2, 3]:
-            images = np.zeros([b, 100, 100, c], dtype=np.float32)
-            masks = np.zeros([b, 100, 100, c], dtype=np.int32)
-            # if c == 1:
-            #     masks = np.squeeze(masks, axis=-1)
-            _, augmented_masks = augment_images(images, masks, augmentation_pipeline)
-            assert augmented_masks.shape == masks.shape
-
     # check control flow for no channel dimensions for the masks
-    masks = np.zeros([b, 100, 100], dtype=np.int32)
+    masks = np.zeros([batch_num, 100, 100], dtype=np.int32)
     _, augmented_masks = augment_images(images, masks, augmentation_pipeline)
     assert augmented_masks.shape == masks.shape
