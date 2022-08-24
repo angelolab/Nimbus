@@ -200,7 +200,8 @@ class SegmentationTFRecords:
         # make tfrecord path
         os.makedirs(self.tf_record_path, exist_ok=True)
 
-        # read conversion matrix
+        # CONVERSION MATRIX
+        # read the file
         self.conversion_matrix = pd.read_csv(self.conversion_matrix_path)
 
         # check if markers were selected or take all markers from conversion matrix
@@ -209,17 +210,43 @@ class SegmentationTFRecords:
         else:
             self.selected_markers = self.selected_markers
 
+            # check if selected markers are in conversion matrix
+            if not set(self.selected_markers).issubset(set(self.conversion_matrix.columns)):
+                raise ValueError("The selected markers are not in the conversion matrix")
+
+        # NORMALIZATION DICT
         # load or construct normalization dict
         if str(self.normalization_dict_path).endswith(".json"):
             self.normalization_dict = json.load(open(self.normalization_dict_path, "r"))
+
+            # check if selected markers are in normalization dict
+            if not set(self.selected_markers).issubset(set(self.normalization_dict.keys())):
+                raise ValueError("The selected markers are not in the normalization dict")
         else:
+            # function raises a generic FileNotFoundError if selected_marker file
+            # or segmentation_fname not in data_folders
             self.normalization_dict = self.calculate_normalization_matrix(
                 self.data_folders,
                 self.selected_markers,
             )
+        # check if normalization_quantile is in [0, 1]
+        if self.normalization_quantile < 0 or self.normalization_quantile > 1:
+            raise ValueError("The normalization_quantile is not in [0, 1]")
 
+        # CELL TYPE TABLE
         # load cell_types.csv
         self.cell_type_table = pd.read_csv(self.cell_table_path)
+
+        # check if cell_type_key is in cell_type_table
+        if self.cell_type_key not in self.cell_type_table.columns:
+            raise ValueError("The cell_type_key is not in the cell_type_table")
+        # check if segment_label_key is in cell_type_table
+        if self.segment_label_key not in self.cell_type_table.columns:
+            raise ValueError("The segment_label_key is not in the cell_type_table")
+
+        # check if sample_key is in cell_type_table
+        if self.sample_key not in self.cell_type_table.columns:
+            raise ValueError("The sample_key is not in the cell_type_table")
 
     def make_tf_record(self, data_folders):
         """Iterates through the data_folders and loads, transforms and

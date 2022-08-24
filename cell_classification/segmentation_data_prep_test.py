@@ -6,29 +6,30 @@ import pandas as pd
 import json
 from tifffile import imwrite
 from segmentation_data_prep import SegmentationTFRecords
+import copy
 
 
 def prep_object(
-    data_folders=["path"], cell_table_path="path", conversion_matrix_path="path",
-    normalization_dict_path="path", tf_record_path="path",
+    data_folders=["path"], cell_table_path="path",
+    conversion_matrix_path="path", normalization_dict_path="path",
+    tf_record_path="path", selected_markers=None,
+    normalization_quantile=0.99,
 ):
     data_prep = SegmentationTFRecords(
         data_folders=data_folders, cell_table_path=cell_table_path,
-        conversion_matrix_path=conversion_matrix_path,
-        imaging_platform="imaging_platform", dataset="dataset",
-        tile_size=[256, 256], tf_record_path=tf_record_path,
-        normalization_dict_path=normalization_dict_path,
+        conversion_matrix_path=conversion_matrix_path, imaging_platform="imaging_platform",
+        dataset="dataset", tile_size=[256, 256], tf_record_path=tf_record_path,
+        normalization_dict_path=normalization_dict_path, selected_markers=selected_markers,
+        normalization_quantile=normalization_quantile,
     )
     return data_prep
 
 
 def prepare_conversion_matrix():
-    col_names = ["CD11c", "CD14", "CD56", "CD57"]
-    row_names = ["stromal", "FAP", "NK", "CD4T", "CD14", "CD163"]
     conversion_matrix = pd.DataFrame(
-        np.random.randint(0, 2, size=(len(row_names), len(col_names))),
-        columns=col_names,
-        index=row_names,
+        np.random.randint(0, 2, size=(6, 4)),
+        columns=["CD11c", "CD14", "CD56", "CD57"],
+        index=["stromal", "FAP", "NK", "CD4T", "CD14", "CD163"],
     )
     return conversion_matrix
 
@@ -122,15 +123,34 @@ def test_check_input():
         conversion_matrix_path = os.path.join(temp_dir, "conversion_matrix.csv")
         conversion_matrix.to_csv(conversion_matrix_path, index=False)
         norm_dict = {"CD11c": 1.0, "CD14": 1.0, "CD56": 1.0, "CD57": 1.0}
-        data_folders = prepare_test_data_folders(5, temp_dir, norm_dict.keys())
+        with open(os.path.join(temp_dir, "norm_dict.json"), "w") as f:
+            json.dump(norm_dict, f)
+        data_folders = prepare_test_data_folders(5, temp_dir, list(norm_dict.keys()) + ["XYZ"])
         cell_table_path = os.path.join(temp_dir, "cell_type_table.csv")
         cell_table = prepare_cell_type_table()
         cell_table.to_csv(cell_table_path, index=False)
 
+        # CONVERSION MATRIX
+        # check if conversion_matrix is loaded correctly in check_input
+        data_prep = prep_object(
+            data_folders=data_folders,
+            conversion_matrix_path=conversion_matrix_path,
+            tf_record_path=os.path.join(temp_dir, "tf_record_path"),
+            cell_table_path=cell_table_path,
+            normalization_dict_path=os.path.join(temp_dir, "norm_dict.json"),
+        )
+        data_prep.check_input()
+        assert np.array_equal(data_prep.conversion_matrix, conversion_matrix)
+        data_prep_working = copy.deepcopy(data_prep)
+
+        # check if ValueError is raised when selected_markers not in conversion_matrix
+        data_prep.selected_markers = ["XYZ"]
+        with pytest.raises(ValueError):
+            data_prep.check_input()
+
+        # NORMALIZATION DICT
         # check if the normalization_dict is loaded correctly in check_input
         # when normalization_dict_path is given to init
-        with open(os.path.join(temp_dir, "norm_dict.json"), "w") as f:
-            json.dump(norm_dict, f)
         data_prep = prep_object(
             conversion_matrix_path=conversion_matrix_path,
             tf_record_path=os.path.join(temp_dir, "tf_record_path"),
@@ -142,14 +162,67 @@ def test_check_input():
 
         # check if the normalization_dict is calculated in check_input when
         # data_folders but no normalization_dict_path is given to init
-        data_prep = prep_object(
-            data_folders=data_folders,
-            conversion_matrix_path=conversion_matrix_path,
-            tf_record_path=os.path.join(temp_dir, "tf_record_path"),
-            cell_table_path=cell_table_path,
-        )
+        data_prep.data_folders = data_folders
+        data_prep.normalization_dict_path = None
         data_prep.check_input()
         assert norm_dict == data_prep.normalization_dict
+
+        # check if ValueError is raised if selected_markers in conversion_matrix
+        # but not in loaded normalization_dict
+        conversion_matrix = pd.DataFrame(
+            np.random.randint(0, 2, size=(6, 6)),
+            columns=["CD11c", "CD14", "CD56", "CD57", "XYZ", "ZYX"],
+            index=["stromal", "FAP", "NK", "CD4T", "CD14", "CD163"],
+        )
+        conversion_matrix_path = os.path.join(temp_dir, "conversion_matrix.csv")
+        conversion_matrix.to_csv(conversion_matrix_path, index=False)
+        data_prep = copy.deepcopy(data_prep_working)
+        data_prep.conversion_matrix_path = conversion_matrix_path
+        data_prep.normalization_dict_path = os.path.join(temp_dir, "norm_dict.json")
+        data_prep.selected_markers = ["ZYX"]
+        with pytest.raises(ValueError):
+            data_prep.check_input()
+
+        # check if FileNotFoundError is raised if data_folders and conversion_matrix_path are given
+        # together with selected_markers were images are missing for in data_folders
+        data_prep = copy.deepcopy(data_prep_working)
+        data_prep.selected_markers = ["ZYX"]
+        data_prep.conversion_matrix_path = conversion_matrix_path
+        data_prep.normalization_dict_path = None
+        data_prep.data_folders = data_folders
+        with pytest.raises(FileNotFoundError):
+            data_prep.check_input()
+
+        # check if ValueError is raised when normalization quantile is not in [0,1]
+        data_prep = copy.deepcopy(data_prep_working)
+        data_prep.normalization_quantile = 1.1
+        with pytest.raises(ValueError):
+            data_prep.check_input()
+
+        # CELL TYPE TABLE
+        # check if cell_type_table is loaded correctly in check_input
+        # when cell_type_table_path is given to init
+        data_prep = copy.deepcopy(data_prep_working)
+        data_prep.cell_type_table_path = cell_table_path
+        data_prep.check_input()
+        assert np.array_equal(cell_table, data_prep.cell_type_table)
+
+        # check if ValueError is raised when cell_type_key not in cell_type_table
+        data_prep.cell_type_key = "wrong_key"
+        with pytest.raises(ValueError):
+            data_prep.check_input()
+
+        # check if ValueError is raised when segment_label_key not in cell_type_table
+        data_prep = copy.deepcopy(data_prep_working)
+        data_prep.segment_label_key = "wrong_key"
+        with pytest.raises(ValueError):
+            data_prep.check_input()
+
+        # check if ValueError is raised when sample_key not in cell_type_table
+        data_prep = copy.deepcopy(data_prep_working)
+        data_prep.sample_key = "wrong_key"
+        with pytest.raises(ValueError):
+            data_prep.check_input()
 
 
 def test_get_inst_binary_masks():
@@ -231,7 +304,8 @@ def test_get_marker_activity_mask():
             continue
         assert (
             marker_activity_mask[instance_mask == i]
-            == int(marker_activity.activity[marker_activity.labels == i])).all()
+            == int(marker_activity.activity[marker_activity.labels == i])
+        ).all()
 
 
 def test_prepare_example():
