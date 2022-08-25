@@ -148,11 +148,7 @@ def test_load_and_check_input():
 
         # check if ValueError is raised when selected_markers not in conversion_matrix
         data_prep.selected_markers = ["XYZ"]
-        with pytest.raises(
-            ValueError,
-            match="Not all values given in list selected markers were found in list conversion "
-            + "matrix columns.",
-        ):
+        with pytest.raises(ValueError, match="selected markers were found in list conversion"):
             data_prep.load_and_check_input()
 
         # NORMALIZATION DICT
@@ -188,11 +184,7 @@ def test_load_and_check_input():
         data_prep.conversion_matrix_path = conversion_matrix_path
         data_prep.normalization_dict_path = os.path.join(temp_dir, "norm_dict.json")
         data_prep.selected_markers = ["XYZ"]
-        with pytest.raises(
-            ValueError,
-            match="Not all values given in list selected markers were found in list normalization"
-            + " dict keys.",
-        ):
+        with pytest.raises(ValueError, match="selected markers were found in list normalization"):
             data_prep.load_and_check_input()
 
         # check if FileNotFoundError is raised if data_folders and conversion_matrix_path are given
@@ -252,10 +244,7 @@ def test_load_and_check_input():
         cell_table_path_tmp = os.path.join(temp_dir, "cell_type_table_wrong_sample.csv")
         cell_table.to_csv(cell_table_path_tmp, index=False)
         data_prep.cell_table_path = cell_table_path_tmp
-        with pytest.raises(
-                ValueError,
-                match="Not all values given in list sample names were found in list data folders."
-        ):
+        with pytest.raises(ValueError, match="list sample names were found in list data folder."):
             data_prep.load_and_check_input()
 
 
