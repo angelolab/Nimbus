@@ -15,11 +15,10 @@ class SegmentationTFRecords:
 
     def __init__(
         self, data_folders, cell_table_path, conversion_matrix_path,
-        imaging_platform, dataset, tile_size, tf_record_path,
-        selected_markers=None, normalization_dict_path=None,
-        normalization_quantile=0.99, cell_type_key="cluster_labels",
-        sample_key="SampleID", segmentation_fname="cell_segmentation",
-        segment_label_key="labels",
+        imaging_platform, dataset, tile_size, tf_record_path, selected_markers=None,
+        normalization_dict_path=None, normalization_quantile=0.99,
+        cell_type_key="cluster_labels", sample_key="SampleID",
+        segmentation_fname="cell_segmentation", segment_label_key="labels",
     ):
         """Initializes SegmentationTFRecords and loads everything except the images
 
@@ -98,7 +97,9 @@ class SegmentationTFRecords:
             np.array:
                 The instance mask
         """
-        instance_mask = imread(os.path.join(data_folder, self.segmentation_fname + ".tiff"))
+        instance_mask = imread(
+            os.path.join(data_folder, self.segmentation_fname + ".tiff")
+        )
         edge = find_boundaries(instance_mask, mode="inner").astype(np.uint8)
         interior = np.logical_and(edge == 0, instance_mask > 0).astype(np.uint8)
         return interior, instance_mask
@@ -117,7 +118,9 @@ class SegmentationTFRecords:
                 The marker activity for the given labels, 1 if the marker is active, 0
                 otherwise and -1 if the marker is not specific enough to be considered active
         """
-        sample_subset = self.cell_type_table[self.cell_type_table.SampleID == sample_name]
+        sample_subset = self.cell_type_table[
+            self.cell_type_table.SampleID == sample_name
+        ]
         cell_types = sample_subset[self.cell_type_key].values
 
         df = pd.DataFrame(
@@ -173,6 +176,7 @@ class SegmentationTFRecords:
         marker_activity_mask = self.get_marker_activity_mask(
             instance_mask, cell_types, marker_activity
         )
+
         return {
             "mplex_img": mplex_img.astype(np.float32),
             "binary_mask": binary_mask.astype(np.uint8),
@@ -184,16 +188,48 @@ class SegmentationTFRecords:
             "cell_types": cell_types,
         }
 
-    def tile_example(example, tile_size):
+    def tile_example(self, example, tile_size, stride, spatial_keys=[
+            "mplex_img", "binary_mask", "instance_mask", "marker_activity_mask",
+        ],
+    ):
         """Tiles the example into a grid of tiles
         Args:
             example (dict):
                 The example to tile
+            tile_size (list):
+                The size of the tiles
+            stride (list):
+                The stride of the tiles
+            spatial_keys (list):
+                The keys in the example to tile
         Returns:
             list:
                 List of example dicts, one for each tile
         """
-        return None
+        # tile the example
+        tiled_examples = {}
+        for key in spatial_keys:
+            if example[key].ndim == 2:
+                example[key] = np.expand_dims(example[key], axis=-1)
+            res = np.lib.stride_tricks.sliding_window_view(
+                example[key], window_shape=tile_size + list(example[key].shape[2:])
+            )[:: stride[0], :: stride[1]]
+            sh = list(res.shape)
+            tiled_examples[key] = res.reshape([sh[0] * sh[1]] + sh[3:])  # tiles x H x W x C
+
+        # store individual tiled examples in a list of dicts
+        non_spatial_keys = [key for key in example if key not in spatial_keys]
+        num_tiles = tiled_examples[spatial_keys[0]].shape[0]
+        example_list = []
+        for tile in range(num_tiles):
+            example_out = {}
+            for key in spatial_keys:
+                example_out[key] = tiled_examples[key][tile]
+            for non_spatial_key in non_spatial_keys:
+                example_out[non_spatial_key] = example[non_spatial_key]
+            example_list.append(example_out)
+
+        return example_list
 
     def check_input(self):
         """Checks the input for correctness"""
