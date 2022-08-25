@@ -15,7 +15,7 @@ class SegmentationTFRecords:
 
     def __init__(
         self, data_folders, cell_table_path, conversion_matrix_path,
-        imaging_platform, dataset, tile_size, tf_record_path, selected_markers=None,
+        imaging_platform, dataset, tile_size, stride, tf_record_path, selected_markers=None,
         normalization_dict_path=None, normalization_quantile=0.99,
         cell_type_key="cluster_labels", sample_key="SampleID",
         segmentation_fname="cell_segmentation", segment_label_key="labels",
@@ -35,6 +35,8 @@ class SegmentationTFRecords:
                 The dataset where the imaging data comes from
             tile_size list [int,int]:
                 The size of the tiles to use for the segmentation model
+            stride list [int,int]:
+                The stride to tile the data
             tf_record_path (str):
                 The path to the tf record to make
             selected_markers (list):
@@ -66,6 +68,8 @@ class SegmentationTFRecords:
         self.tf_record_path = tf_record_path
         self.cell_type_key = cell_type_key
         self.cell_table_path = cell_table_path
+        self.tile_size = tile_size
+        self.stride = stride
 
     def get_image(self, data_folder, marker):
         """Loads the images from a single data_folder
@@ -188,7 +192,7 @@ class SegmentationTFRecords:
             "cell_types": cell_types,
         }
 
-    def tile_example(self, example, tile_size, stride, spatial_keys=[
+    def tile_example(self, example, spatial_keys=[
             "mplex_img", "binary_mask", "instance_mask", "marker_activity_mask",
         ],
     ):
@@ -212,8 +216,8 @@ class SegmentationTFRecords:
             if example[key].ndim == 2:
                 example[key] = np.expand_dims(example[key], axis=-1)
             res = np.lib.stride_tricks.sliding_window_view(
-                example[key], window_shape=tile_size + list(example[key].shape[2:])
-            )[:: stride[0], :: stride[1]]
+                example[key], window_shape=self.tile_size + list(example[key].shape[2:])
+            )[:: self.stride[0], :: self.stride[1]]
             sh = list(res.shape)
             tiled_examples[key] = res.reshape([sh[0] * sh[1]] + sh[3:])  # tiles x H x W x C
 

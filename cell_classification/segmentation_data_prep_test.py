@@ -10,12 +10,13 @@ from segmentation_data_prep import SegmentationTFRecords
 
 def prep_object(
     data_folders=["path"], cell_table_path="path", conversion_matrix_path="path",
-    normalization_dict_path="path", tf_record_path="path",
+    normalization_dict_path="path", tf_record_path="path", tile_size=[256, 256],
+    stride=[256, 256],
 ):
     data_prep = SegmentationTFRecords(
         data_folders=data_folders, cell_table_path=cell_table_path,
         conversion_matrix_path=conversion_matrix_path, imaging_platform="imaging_platform",
-        dataset="dataset", tile_size=[256, 256], tf_record_path=tf_record_path,
+        dataset="dataset", tile_size=tile_size, stride=stride, tf_record_path=tf_record_path,
         normalization_dict_path=normalization_dict_path,
     )
     return data_prep
@@ -46,9 +47,7 @@ def test_get_image():
         assert not np.array_equal(CD8_img, CD4_img)
 
 
-def prepare_test_data_folders(
-    num_folders, temp_dir, selected_markers, random=False, scale=[1.0]
-):
+def prepare_test_data_folders(num_folders, temp_dir, selected_markers, random=False, scale=[1.0]):
     data_folders = []
     if len(scale) != num_folders:
         scale = [1.0] * num_folders
@@ -75,8 +74,7 @@ def prepare_cell_type_table():
         {
             "SampleID": ["fov_1"] * 6 + ["fov_2"] * 6,
             "labels": [1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6],
-            "cluster_labels": ["stromal", "FAP", "NK"] * 2
-            + ["CD4T", "CD14", "CD163"] * 2,
+            "cluster_labels": ["stromal", "FAP", "NK"] * 2 + ["CD4T", "CD14", "CD163"] * 2,
         }
     )
 
@@ -109,9 +107,7 @@ def test_calculate_normalization_matrix():
             assert norm_dict[marker] - 1 / (0.5 * std) < 0.001
 
         # check if the normalization_dict is correctly written to the json file
-        norm_dict_loaded = json.load(
-            open(os.path.join(temp_dir, "norm_dict_test.json"))
-        )
+        norm_dict_loaded = json.load(open(os.path.join(temp_dir, "norm_dict_test.json")))
         assert norm_dict_loaded == norm_dict
 
         # check if the normalization_dict has the correct keys
@@ -175,9 +171,7 @@ def test_get_inst_binary_masks():
         # check if the instance_mask is correctly loaded
         imwrite(os.path.join(temp_dir, "cell_segmentation.tiff"), instance_mask)
         data_prep = prep_object()
-        loaded_binary_img, loaded_img = data_prep.get_inst_binary_masks(
-            data_folder=temp_dir
-        )
+        loaded_binary_img, loaded_img = data_prep.get_inst_binary_masks(data_folder=temp_dir)
         assert np.array_equal(loaded_img, instance_mask)
 
         # check if binary mask is binarized correctly
@@ -195,9 +189,7 @@ def test_get_marker_activity():
     marker = "CD11c"
     sample_name = "fov_1"
     fov_1_subset = cell_table[cell_table.SampleID == sample_name]
-    marker_activity = data_prep.get_marker_activity(
-        sample_name, conversion_matrix, marker
-    )
+    marker_activity = data_prep.get_marker_activity(sample_name, conversion_matrix, marker)
 
     # check if the we get marker_acitivity for all labels in the fov_1 subset
     assert np.array_equal(marker_activity.labels, fov_1_subset.labels)
@@ -248,18 +240,14 @@ def test_tile_example():
         "mplex_img": np.random.rand(512, 512, 3).astype(np.float32),
         "binary_mask": np.random.randint(0, 2, [512, 512, 1]).astype(np.uint8),
         "instance_mask": np.random.randint(0, 10000, [512, 512]).astype(np.uint16),
-        "marker_activity_mask": np.random.randint(0, 2, [512, 512, 21]).astype(
-            np.uint8
-        ),
+        "marker_activity_mask": np.random.randint(0, 2, [512, 512, 21]).astype(np.uint8),
         "dataset": "test_dataset",
         "platform": "mibi",
         "cell_types": ["CD11c", "CD11b", "CD11a"],
         "marker": "CD11c",
     }
-    data_prep = prep_object()
-    tiled_examples = data_prep.tile_example(
-        example, tile_size=[128, 128], stride=[128, 128]
-    )
+    data_prep = prep_object(tile_size=[128, 128], stride=[128, 128])
+    tiled_examples = data_prep.tile_example(example)
 
     # check if the right number of tiles got returned
     assert len(tiled_examples) == 16
