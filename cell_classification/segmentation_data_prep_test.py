@@ -10,7 +10,6 @@ import copy
 
 
 def prep_object(
-<<<<<<< HEAD
     data_folders=["path"], cell_table_path="path", conversion_matrix_path="path",
     normalization_dict_path="path", tf_record_path="path", tile_size=[256, 256],
     stride=[256, 256],
@@ -19,21 +18,9 @@ def prep_object(
         data_folders=data_folders, cell_table_path=cell_table_path,
         conversion_matrix_path=conversion_matrix_path, imaging_platform="imaging_platform",
         dataset="dataset", tile_size=tile_size, stride=stride, tf_record_path=tf_record_path,
-=======
-    data_dir="path", cell_table_path="path", conversion_matrix_path="path",
-    normalization_dict_path="path", tf_record_path="path",
-    selected_markers=None, normalization_quantile=0.99,
-):
-    data_prep = SegmentationTFRecords(
-        data_dir=data_dir, cell_table_path=cell_table_path,
-        conversion_matrix_path=conversion_matrix_path,
-        imaging_platform="imaging_platform", dataset="dataset",
-        tile_size=[256, 256], tf_record_path=tf_record_path,
->>>>>>> main
-        normalization_dict_path=normalization_dict_path,
-        selected_markers=selected_markers,
-        normalization_quantile=normalization_quantile,
-    )
+        data_dir="path", cell_table_path="path", conversion_matrix_path="path",
+        normalization_dict_path="path", tf_record_path="path",
+        selected_markers=None, normalization_quantile=0.99,)
     return data_prep
 
 
