@@ -270,13 +270,11 @@ class SegmentationTFRecords:
         if self.sample_key not in self.cell_type_table.columns:
             raise ValueError("The sample_key is not in the cell_type_table")
 
-        # check if sample_names in cell_type_table match sample_names in data_folders
-        for sample_name in self.cell_type_table[self.sample_key].values:
-            matches = [folder for folder in self.data_folders if re.search(sample_name, folder)]
-            if not matches:
-                raise ValueError(
-                    "The sample_name {} is not in the data_folders".format(sample_name)
-                )
+        # check if sample_names in cell_type_table match sample_names in data_folder
+        verify_in_list(
+            sample_names=self.cell_type_table[self.sample_key].values,
+            data_folders=list_folders(self.data_dir)
+        )
 
     def make_tf_record(self, data_folders):
         """Iterates through the data_folders and loads, transforms and
@@ -286,7 +284,6 @@ class SegmentationTFRecords:
             tf_record_path (str):
                 The path to the tf record to make
         """
-
         return None
 
     def calculate_normalization_matrix(self, data_folders, selected_markers):

@@ -10,22 +10,15 @@ import copy
 
 
 def prep_object(
-    data_dir="path",
-    cell_table_path="path",
-    conversion_matrix_path="path",
-    normalization_dict_path="path",
-    tf_record_path="path",
-    selected_markers=None,
-    normalization_quantile=0.99,
+    data_dir="path", cell_table_path="path", conversion_matrix_path="path",
+    normalization_dict_path="path", tf_record_path="path",
+    selected_markers=None, normalization_quantile=0.99,
 ):
     data_prep = SegmentationTFRecords(
-        data_dir=data_dir,
-        cell_table_path=cell_table_path,
+        data_dir=data_dir, cell_table_path=cell_table_path,
         conversion_matrix_path=conversion_matrix_path,
-        imaging_platform="imaging_platform",
-        dataset="dataset",
-        tile_size=[256, 256],
-        tf_record_path=tf_record_path,
+        imaging_platform="imaging_platform", dataset="dataset",
+        tile_size=[256, 256], tf_record_path=tf_record_path,
         normalization_dict_path=normalization_dict_path,
         selected_markers=selected_markers,
         normalization_quantile=normalization_quantile,
@@ -250,6 +243,19 @@ def test_load_and_check_input():
         data_prep = copy.deepcopy(data_prep_working)
         data_prep.sample_key = "wrong_key"
         with pytest.raises(ValueError, match="The sample_key is not in the cell_type_table"):
+            data_prep.load_and_check_input()
+
+        # check if ValueError is raised when sample_names in cell_type_table do not match
+        # sample_names in data_folders
+        data_prep = copy.deepcopy(data_prep_working)
+        cell_table.SampleID[0] = "wrong_sample"
+        cell_table_path_tmp = os.path.join(temp_dir, "cell_type_table_wrong_sample.csv")
+        cell_table.to_csv(cell_table_path_tmp, index=False)
+        data_prep.cell_table_path = cell_table_path_tmp
+        with pytest.raises(
+                ValueError,
+                match="Not all values given in list sample names were found in list data folders."
+        ):
             data_prep.load_and_check_input()
 
 
