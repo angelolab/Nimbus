@@ -8,24 +8,25 @@ import os
 import xarray
 from tqdm import tqdm
 import json
+from ark.utils.misc_utils import verify_in_list
+from ark.utils.io_utils import list_folders, validate_paths
+import re
 
 
 class SegmentationTFRecords:
     """Prepares the data for the segmentation model"""
 
     def __init__(
-        self, data_folders, cell_table_path, conversion_matrix_path,
-        imaging_platform, dataset, tile_size, tf_record_path,
-        selected_markers=None, normalization_dict_path=None,
-        normalization_quantile=0.99, cell_type_key="cluster_labels",
-        sample_key="SampleID", segmentation_fname="cell_segmentation",
-        segment_label_key="labels",
+        self, data_dir, cell_table_path, conversion_matrix_path, imaging_platform, dataset,
+        tile_size, tf_record_path, selected_markers=None, normalization_dict_path=None,
+        normalization_quantile=0.99, cell_type_key="cluster_labels", sample_key="SampleID",
+        segmentation_fname="cell_segmentation", segment_label_key="labels",
     ):
         """Initializes SegmentationTFRecords and loads everything except the images
 
         Args:
-            data_folders (list):
-                List of folders containing the multiplexed imaging data
+            data_dir str:
+                Path where the data is stored
             cell_table_path (str):
                 Path to the cell table
             conversion_matrix_path (str):
@@ -55,7 +56,7 @@ class SegmentationTFRecords:
                 The key in the cell_table.csv that contains the cell segment labels
         """
         self.selected_markers = selected_markers
-        self.data_folders = data_folders
+        self.data_dir = data_dir
         self.normalization_dict_path = normalization_dict_path
         self.conversion_matrix_path = conversion_matrix_path
         self.normalization_quantile = normalization_quantile
@@ -195,33 +196,53 @@ class SegmentationTFRecords:
         """
         return None
 
-    def check_input(self):
+    def load_and_check_input(self):
         """Checks the input for correctness"""
         # make tfrecord path
         os.makedirs(self.tf_record_path, exist_ok=True)
 
+        # DATA DIR
+        validate_paths(self.data_dir)
+        self.data_folders = [
+            os.path.join(self.data_dir, folder) for folder in list_folders(self.data_dir)
+        ]
+
         # CONVERSION MATRIX
         # read the file
+        validate_paths(self.conversion_matrix_path)
         self.conversion_matrix = pd.read_csv(self.conversion_matrix_path)
 
         # check if markers were selected or take all markers from conversion matrix
         if self.selected_markers is None:
             self.selected_markers = list(self.conversion_matrix.columns)
-        else:
-            self.selected_markers = self.selected_markers
 
-            # check if selected markers are in conversion matrix
-            if not set(self.selected_markers).issubset(set(self.conversion_matrix.columns)):
-                raise ValueError("The selected markers are not in the conversion matrix")
+        # check if selected markers are in conversion matrix
+        verify_in_list(
+            selected_markers=self.selected_markers,
+            conversion_matrix_columns=self.conversion_matrix.columns,
+        )
+
+        # check if selected markers are in data folders
+        for marker in self.selected_markers:
+            exists = False
+            for folder in self.data_folders:
+                if os.path.exists(os.path.join(folder, marker + ".tiff")):
+                    exists = True
+                    break
+            if not exists:
+                raise FileNotFoundError("Marker {} not found in data folders".format(marker))
 
         # NORMALIZATION DICT
         # load or construct normalization dict
-        if str(self.normalization_dict_path).endswith(".json"):
+        if self.normalization_dict_path:
+            validate_paths(self.normalization_dict_path)
             self.normalization_dict = json.load(open(self.normalization_dict_path, "r"))
 
             # check if selected markers are in normalization dict
-            if not set(self.selected_markers).issubset(set(self.normalization_dict.keys())):
-                raise ValueError("The selected markers are not in the normalization dict")
+            verify_in_list(
+                selected_markers=self.selected_markers,
+                normalization_dict_keys=self.normalization_dict.keys(),
+            )
         else:
             # function raises a generic FileNotFoundError if selected_marker file
             # or segmentation_fname not in data_folders
@@ -240,6 +261,7 @@ class SegmentationTFRecords:
         # check if cell_type_key is in cell_type_table
         if self.cell_type_key not in self.cell_type_table.columns:
             raise ValueError("The cell_type_key is not in the cell_type_table")
+
         # check if segment_label_key is in cell_type_table
         if self.segment_label_key not in self.cell_type_table.columns:
             raise ValueError("The segment_label_key is not in the cell_type_table")
@@ -247,6 +269,14 @@ class SegmentationTFRecords:
         # check if sample_key is in cell_type_table
         if self.sample_key not in self.cell_type_table.columns:
             raise ValueError("The sample_key is not in the cell_type_table")
+
+        # check if sample_names in cell_type_table match sample_names in data_folders
+        for sample_name in self.cell_type_table[self.sample_key].values:
+            matches = [folder for folder in self.data_folders if re.search(sample_name, folder)]
+            if not matches:
+                raise ValueError(
+                    "The sample_name {} is not in the data_folders".format(sample_name)
+                )
 
     def make_tf_record(self, data_folders):
         """Iterates through the data_folders and loads, transforms and
