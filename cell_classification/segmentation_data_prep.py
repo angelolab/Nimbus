@@ -269,8 +269,22 @@ class SegmentationTFRecords:
             tf_record_path (str):
                 The path to the tf record to make
         """
+        # check input
+        #self.check_input()
+
+        for data_folder in data_folders:
+            for marker in self.selected_markers:
+                example = self.prepare_example(self, data_folder, marker)
+                if self.tile:
+                    example_list = self.tile_example(example)
+                else:
+                    example_list = [example]
+                for example in example_list:
+                    example_serialized = self.serialize_example(example)
+                    self.write_tf_record(example_serialized)
 
         return None
+
 
     def calculate_normalization_matrix(self, data_folders, selected_markers):
         """Calculates the normalization matrix for the given data if it does not exist
