@@ -17,7 +17,7 @@ class SegmentationTFRecords:
     """Prepares the data for the segmentation model"""
 
     def __init__(
-        self, data_folders, cell_table_path, conversion_matrix_path,
+        self, data_dir, cell_table_path, conversion_matrix_path,
         imaging_platform, dataset, tile_size, stride, tf_record_path, selected_markers=None,
         normalization_dict_path=None, normalization_quantile=0.99,
         cell_type_key="cluster_labels", sample_key="SampleID",
@@ -327,7 +327,7 @@ class SegmentationTFRecords:
                 The path to the tf record to make
         """
         # check input
-        #self.check_input()
+        self.check_input()
 
         for data_folder in data_folders:
             for marker in self.selected_markers:
@@ -341,7 +341,6 @@ class SegmentationTFRecords:
                     self.write_tf_record(example_serialized)
 
         return None
-
 
     def calculate_normalization_matrix(self, data_folders, selected_markers):
         """Calculates the normalization matrix for the given data if it does not exist
