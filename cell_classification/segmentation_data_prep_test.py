@@ -12,16 +12,39 @@ import copy
 def prep_object(
     data_dir="path", cell_table_path="path", conversion_matrix_path="path",
     normalization_dict_path="path", tf_record_path="path", tile_size=[256, 256],
-    stride=[256, 256], normalization_quantile=0.99, selected_markers=None
+    stride=[256, 256], normalization_quantile=0.99, selected_markers=None,
 ):
     data_prep = SegmentationTFRecords(
         data_dir=data_dir, cell_table_path=cell_table_path,
         conversion_matrix_path=conversion_matrix_path, imaging_platform="imaging_platform",
         dataset="dataset", tile_size=tile_size, stride=stride, tf_record_path=tf_record_path,
         normalization_dict_path=normalization_dict_path, selected_markers=selected_markers,
-        normalization_quantile=normalization_quantile
+        normalization_quantile=normalization_quantile,
     )
     return data_prep
+
+
+def prep_object_and_inputs(temp_dir):
+    # create temporary folders with data for the tests
+    conversion_matrix = prepare_conversion_matrix()
+    conversion_matrix_path = os.path.join(temp_dir, "conversion_matrix.csv")
+    conversion_matrix.to_csv(conversion_matrix_path, index=False)
+    norm_dict = {"CD11c": 1.0, "CD14": 1.0, "CD56": 1.0, "CD57": 1.0}
+    with open(os.path.join(temp_dir, "norm_dict.json"), "w") as f:
+        json.dump(norm_dict, f)
+    data_folders = prepare_test_data_folders(5, temp_dir, list(norm_dict.keys()) + ["XYZ"])
+    cell_table_path = os.path.join(temp_dir, "cell_type_table.csv")
+    cell_table = prepare_cell_type_table()
+    cell_table.to_csv(cell_table_path, index=False)
+    data_prep = prep_object(
+        data_dir=temp_dir,
+        conversion_matrix_path=conversion_matrix_path,
+        tf_record_path="path",
+        cell_table_path=cell_table_path,
+        normalization_dict_path=os.path.join(temp_dir, "norm_dict.json"),
+    )
+    data_prep.load_and_check_input()
+    return data_prep, data_folders, conversion_matrix, cell_table
 
 
 def prepare_conversion_matrix():
@@ -61,9 +84,13 @@ def prepare_test_data_folders(num_folders, temp_dir, selected_markers, random=Fa
             else:
                 img = np.ones([256, 256])
             imwrite(
-                os.path.join(temp_dir, "fov_" + str(i), marker + ".tiff"),
+                os.path.join(folder, marker + ".tiff"),
                 img,
             )
+        imwrite(
+            os.path.join(folder, "cell_segmentation.tiff"),
+            np.random.randint(0, 255, size=(256, 256)),
+        )
     return data_folders
 
 
@@ -285,7 +312,7 @@ def test_get_marker_activity():
     marker = "CD11c"
     sample_name = "fov_1"
     fov_1_subset = cell_table[cell_table.SampleID == sample_name]
-    marker_activity = data_prep.get_marker_activity(sample_name, conversion_matrix, marker)
+    marker_activity, _ = data_prep.get_marker_activity(sample_name, conversion_matrix, marker)
 
     # check if the we get marker_acitivity for all labels in the fov_1 subset
     assert np.array_equal(marker_activity.labels, fov_1_subset.labels)
@@ -363,4 +390,25 @@ def test_tile_example():
 
 def test_prepare_example():
     data_prep = prep_object()
-    data_prep
+    with tempfile.TemporaryDirectory() as temp_dir:
+        data_prep, data_folders, _, _ = prep_object_and_inputs(temp_dir)
+        example = data_prep.prepare_example(data_folders[0], marker="CD11c")
+        # check keys in example
+        assert set(example.keys()) == set(
+            [
+                "mplex_img", "binary_mask", "instance_mask", "imaging_platform",
+                "marker_activity_mask", "dataset", "cell_types", "marker",
+            ]
+        )
+
+
+def test_make_tf_record():
+    # data_prep = prep_object()
+    # data_prep.make_tf_record()
+    pass
+
+
+def test_serialize_example():
+    # data_prep = prep_object()
+    # data_prep.serialize_example()
+    pass

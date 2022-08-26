@@ -136,7 +136,7 @@ class SegmentationTFRecords:
                 "activity": conversion_matrix.loc[cell_types, marker].values,
             }
         )
-        return df
+        return df, cell_types
 
     def get_marker_activity_mask(self, instance_mask, binary_mask, marker_activity):
         """Makes a mask from the marker activity
@@ -178,10 +178,13 @@ class SegmentationTFRecords:
         binary_mask, instance_mask = self.get_inst_binary_masks(data_folder)
 
         # get the cell types and marker activity mask
-        cell_types = self.get_cell_types(data_folder)
-        marker_activity = self.get_marker_activity(cell_types, marker)
+        marker_activity, cell_types = self.get_marker_activity(
+            os.path.split(data_folder)[-2],
+            self.conversion_matrix,
+            marker
+        )
         marker_activity_mask = self.get_marker_activity_mask(
-            instance_mask, cell_types, marker_activity
+            instance_mask, binary_mask, marker_activity
         )
 
         return {
@@ -318,7 +321,7 @@ class SegmentationTFRecords:
             data_folders=list_folders(self.data_dir)
         )
 
-    def make_tf_record(self, data_folders):
+    def make_tf_record(self):
         """Iterates through the data_folders and loads, transforms and
         serializes a tfrecord example for each data_folder
 
@@ -326,21 +329,54 @@ class SegmentationTFRecords:
             tf_record_path (str):
                 The path to the tf record to make
         """
-        # check input
-        self.check_input()
+        # load, prepare and check data
+        self.load_and_check_input()
 
-        for data_folder in data_folders:
+        # initialize tfrecord writer
+        self.writer = tf.io.TFRecordWriter(self.tf_record_path)
+
+        # iterate through data_folders and markers to prepare and tile examples
+        print("Preparing examples...")
+        for data_folder in tqdm(self.data_folders):
             for marker in self.selected_markers:
                 example = self.prepare_example(self, data_folder, marker)
                 if self.tile:
                     example_list = self.tile_example(example)
                 else:
                     example_list = [example]
+
+                # serialize and write examples to tfrecord
                 for example in example_list:
                     example_serialized = self.serialize_example(example)
-                    self.write_tf_record(example_serialized)
-
+                    self.writer.write(example_serialized)
         return None
+
+    def serialize_example(self, example):
+        """Serializes an example dict to a tfrecord example
+
+        Args:
+            example (dict):
+                The example dict to serialize
+        Returns:
+            tf.train.Example:
+                The serialized example
+        """
+        for key in example:
+            if type(example[key]) == np.ndarray:
+                if example[key].dtype not in [np.uint8, np.uint16]:
+                    example[key] = (example[key] * np.iinfo(np.uint16).max).astype(np.uint16)
+                example[key] = tf.io.encode_png(example[key])
+        train_example = tf.train.Example(
+            features=tf.train.Features(
+                feature={
+                    key: tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[example[key].tostring()])
+                    )
+                    for key in example
+                }
+            )
+        )
+        return train_example.SerializeToString()
 
     def calculate_normalization_matrix(self, data_folders, selected_markers):
         """Calculates the normalization matrix for the given data if it does not exist
@@ -355,7 +391,8 @@ class SegmentationTFRecords:
         """
         # iterate through the data_folders and calculate the quantiles
         quantiles = {}
-        for data_folder in data_folders:
+        print("Calculating normalization quantiles...")
+        for data_folder in tqdm(data_folders):
             for marker in selected_markers:
                 img = self.get_image(data_folder, marker)
                 if marker not in quantiles:
