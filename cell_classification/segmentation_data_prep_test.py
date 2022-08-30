@@ -7,7 +7,7 @@ import json
 from tifffile import imwrite
 from segmentation_data_prep import SegmentationTFRecords
 import copy
-
+import tensorflow as tf
 
 def prep_object(
     data_dir="path", cell_table_path="path", conversion_matrix_path="path",
@@ -32,16 +32,19 @@ def prep_object_and_inputs(temp_dir):
     norm_dict = {"CD11c": 1.0, "CD14": 1.0, "CD56": 1.0, "CD57": 1.0}
     with open(os.path.join(temp_dir, "norm_dict.json"), "w") as f:
         json.dump(norm_dict, f)
-    data_folders = prepare_test_data_folders(5, temp_dir, list(norm_dict.keys()) + ["XYZ"])
+    data_folders = prepare_test_data_folders(
+        5, temp_dir, list(norm_dict.keys()) + ["XYZ"],
+        random=True, scale=[0.5, 1.0, 1.5, 2.0, 5.0]
+    )
     cell_table_path = os.path.join(temp_dir, "cell_type_table.csv")
     cell_table = prepare_cell_type_table()
     cell_table.to_csv(cell_table_path, index=False)
     data_prep = prep_object(
         data_dir=temp_dir,
         conversion_matrix_path=conversion_matrix_path,
-        tf_record_path="path",
+        tf_record_path=temp_dir,
         cell_table_path=cell_table_path,
-        normalization_dict_path=os.path.join(temp_dir, "norm_dict.json"),
+        normalization_dict_path=None,
     )
     data_prep.load_and_check_input()
     return data_prep, data_folders, conversion_matrix, cell_table
@@ -60,12 +63,14 @@ def test_get_image():
     data_prep = prep_object()
     with tempfile.TemporaryDirectory() as temp_dir:
         test_img_1 = np.random.rand(256, 256)
-        test_img_2 = np.random.rand(256, 256)
+        test_img_2 = np.random.rand(256, 256,1)
         imwrite(os.path.join(temp_dir, "CD8.tiff"), test_img_1)
         imwrite(os.path.join(temp_dir, "CD4.tiff"), test_img_2)
         CD8_img = data_prep.get_image(data_folder=temp_dir, marker="CD8")
         CD4_img = data_prep.get_image(data_folder=temp_dir, marker="CD4")
-        assert np.array_equal(test_img_1, CD8_img)
+
+        # test if the images are the same and a single channel image is always returned
+        assert np.array_equal(test_img_1, np.squeeze(CD8_img))
         assert np.array_equal(test_img_2, CD4_img)
         assert not np.array_equal(CD8_img, CD4_img)
 
@@ -294,13 +299,13 @@ def test_get_inst_binary_masks():
         imwrite(os.path.join(temp_dir, "cell_segmentation.tiff"), instance_mask)
         data_prep = prep_object()
         loaded_binary_img, loaded_img = data_prep.get_inst_binary_masks(data_folder=temp_dir)
-        assert np.array_equal(loaded_img, instance_mask)
+        assert np.array_equal(np.squeeze(loaded_img), instance_mask)
 
         # check if binary mask is binarized correctly
         assert np.array_equal(np.unique(loaded_binary_img), np.array([0, 1]))
 
         # check if binary mask is eroded correctly
-        assert np.array_equal(loaded_binary_img, instance_mask_eroded)
+        assert np.array_equal(np.squeeze(loaded_binary_img), instance_mask_eroded)
 
 
 def test_get_marker_activity():
@@ -400,6 +405,14 @@ def test_prepare_example():
                 "marker_activity_mask", "dataset", "cell_types", "marker",
             ]
         )
+        
+        # check correct normalization of mplex_img
+        assert example["mplex_img"].max() <= 1.0
+        assert example["mplex_img"].min() >= 0.0
+
+        # check if all images are 3 dimensional
+        for key in ["mplex_img", "binary_mask", "instance_mask", "marker_activity_mask"]:
+            assert example[key].ndim == 3
 
 
 def test_make_tf_record():
@@ -408,7 +421,69 @@ def test_make_tf_record():
     pass
 
 
+def parse_example(deserialized_example):
+    """Parse an example into a dictionary of tensors
+
+    Args:
+        deserialized_example: a tf.Example protobuf
+    Returns:
+        a dictionary of tensors and metadata strings
+    """
+    
+    example = {}
+    for key in ["dataset", "marker", "imaging_platform"]: #  
+            example[key] = deserialized_example.features.feature[key].bytes_list.value[0].decode()
+    for key in ["cell_types"]:
+        example[key] = pd.read_json(
+            deserialized_example.features.feature[key].bytes_list.value[0].decode()
+            )
+    for key in ["binary_mask", "marker_activity_mask"]:
+        example[key] = tf.io.decode_png(
+            deserialized_example.features.feature[key].bytes_list.value[0]
+            )
+    for key in ["mplex_img"  , "instance_mask"]:
+        example[key] = tf.io.decode_png(
+            deserialized_example.features.feature[key].bytes_list.value[0],dtype=tf.uint16
+            )
+    example["mplex_img"] = tf.cast(example["mplex_img"], tf.float32) \
+       / tf.constant(np.iinfo(np.uint16).max, dtype=tf.float32)
+    return example
+
+
 def test_serialize_example():
-    # data_prep = prep_object()
-    # data_prep.serialize_example()
-    pass
+    with tempfile.TemporaryDirectory() as temp_dir:
+        data_prep, data_folders, _, _ = prep_object_and_inputs(temp_dir)
+        example = data_prep.prepare_example(data_folders[0], marker="CD11c")
+        serialized_example = data_prep.serialize_example(copy.deepcopy(example))
+        deserialized_example = tf.train.Example.FromString(serialized_example)
+        parsed_example = parse_example(deserialized_example)
+
+        for key in ["dataset", "marker", "imaging_platform"]:
+            assert example[key] == parsed_example[key]
+        # for key in ["cell_types"]:
+        #     assert example[key].equals(parsed_example[key])
+        for key in ["binary_mask", "marker_activity_mask", "instance_mask"]: # "mplex_img" 
+            assert np.array_equal(example[key], parsed_example[key].numpy())
+        
+        # tomorrow: parse function doesn't work for mplex_img and for cell_types
+
+        # # check if serialized example has the right keys
+        # assert set(deserialized_example.features.feature.keys()) == set(example.keys())
+
+        # # check string features
+        # for key in ["dataset", "marker", "imaging_platform"]: #  
+        #     assert deserialized_example.features.feature[key].bytes_list.value[0].decode() \
+        #         == example[key]
+        
+        # # check df features
+        # for key in ["cell_types"]:
+        #     pd.read_json(deserialized_example.features.feature[key].bytes_list.value[0].decode()) \
+        #         == example[key]
+        
+        # # check if deserialized example has the right values
+        # for key in ["binary_mask", "marker_activity_mask"]:
+        #     img = tf.io.decode_png(deserialized_example.features.feature[key].bytes_list.value[0])
+        #     assert np.array_equal(img, example[key])
+        # for key in ["mplex_img"  , "instance_mask"]:
+        #     img = tf.io.decode_png(deserialized_example.features.feature[key].bytes_list.value[0],dtype=tf.uint16)
+        #     assert np.array_equal(img, example[key])

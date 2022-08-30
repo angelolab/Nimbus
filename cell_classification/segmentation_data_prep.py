@@ -10,7 +10,6 @@ from tqdm import tqdm
 import json
 from ark.utils.misc_utils import verify_in_list
 from ark.utils.io_utils import list_folders, validate_paths
-import re
 
 
 class SegmentationTFRecords:
@@ -88,6 +87,8 @@ class SegmentationTFRecords:
                 The multiplexed image
         """
         img = imread(os.path.join(data_folder, marker + ".tiff"))
+        if img.ndim == 2:
+            img = np.expand_dims(img, axis=-1)
         return img
 
     def get_inst_binary_masks(self, data_folder):
@@ -107,6 +108,8 @@ class SegmentationTFRecords:
         instance_mask = imread(
             os.path.join(data_folder, self.segmentation_fname + ".tiff")
         )
+        if instance_mask.ndim == 2:
+            instance_mask = np.expand_dims(instance_mask, axis=-1)
         edge = find_boundaries(instance_mask, mode="inner").astype(np.uint8)
         interior = np.logical_and(edge == 0, instance_mask > 0).astype(np.uint8)
         return interior, instance_mask
@@ -186,7 +189,6 @@ class SegmentationTFRecords:
         marker_activity_mask = self.get_marker_activity_mask(
             instance_mask, binary_mask, marker_activity
         )
-
         return {
             "mplex_img": mplex_img.astype(np.float32),
             "binary_mask": binary_mask.astype(np.uint8),
@@ -195,7 +197,7 @@ class SegmentationTFRecords:
             "marker_activity_mask": marker_activity_mask.astype(np.uint8),
             "dataset": self.dataset,
             "marker": marker,
-            "cell_types": cell_types,
+            "cell_types": marker_activity,
         }
 
     def tile_example(self, example, spatial_keys=[
@@ -361,18 +363,29 @@ class SegmentationTFRecords:
             tf.train.Example:
                 The serialized example
         """
-        for key in example:
-            if type(example[key]) == np.ndarray:
+        string_example = {}
+
+        for key in example.keys():
+            #if key in spatial_keys:
+            if type(example[key]) in [np.ndarray, tf.Tensor]:
+                # convert float32 into uint16 for compression and storage
                 if example[key].dtype not in [np.uint8, np.uint16]:
-                    example[key] = (example[key] * np.iinfo(np.uint16).max).astype(np.uint16)
-                example[key] = tf.io.encode_png(example[key])
+                    example[key] = example[key] * np.iinfo(np.uint16).max
+                    example[key] = example[key].astype(np.uint16)
+                # convert to bytes
+                string_example[key] = tf.io.encode_png(example[key]).numpy()
+            elif type(example[key]) in [pd.DataFrame, pd.Series]:
+                string_example[key] = example[key].to_json().encode()
+            elif type(example[key]) == str:
+                string_example[key] = example[key].encode()
+        # 
         train_example = tf.train.Example(
             features=tf.train.Features(
                 feature={
                     key: tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[example[key].tostring()])
+                        bytes_list=tf.train.BytesList(value=[string_example[key]])
                     )
-                    for key in example
+                    for key in string_example.keys()
                 }
             )
         )
