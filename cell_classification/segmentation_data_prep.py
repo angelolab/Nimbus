@@ -351,6 +351,7 @@ class SegmentationTFRecords:
                 for example in example_list:
                     example_serialized = self.serialize_example(example)
                     self.writer.write(example_serialized)
+        self.writer.close()
         return None
 
     def serialize_example(self, example):
