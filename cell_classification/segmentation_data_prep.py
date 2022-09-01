@@ -16,10 +16,9 @@ class SegmentationTFRecords:
     """Prepares the data for the segmentation model"""
 
     def __init__(
-        self, data_dir, cell_table_path, conversion_matrix_path,
-        imaging_platform, dataset, tile_size, stride, tf_record_path, selected_markers=None,
-        normalization_dict_path=None, normalization_quantile=0.99,
-        cell_type_key="cluster_labels", sample_key="SampleID",
+        self, data_dir, cell_table_path, conversion_matrix_path, imaging_platform, dataset,
+        tile_size, stride, tf_record_path, selected_markers=None, normalization_dict_path=None,
+        normalization_quantile=0.99, cell_type_key="cluster_labels", sample_key="SampleID",
         segmentation_fname="cell_segmentation", segment_label_key="labels",
     ):
         """Initializes SegmentationTFRecords and loads everything except the images
@@ -105,9 +104,7 @@ class SegmentationTFRecords:
             np.array:
                 The instance mask
         """
-        instance_mask = imread(
-            os.path.join(data_folder, self.segmentation_fname + ".tiff")
-        )
+        instance_mask = imread(os.path.join(data_folder, self.segmentation_fname + ".tiff"))
         if instance_mask.ndim == 2:
             instance_mask = np.expand_dims(instance_mask, axis=-1)
         edge = find_boundaries(instance_mask, mode="inner").astype(np.uint8)
@@ -128,9 +125,7 @@ class SegmentationTFRecords:
                 The marker activity for the given labels, 1 if the marker is active, 0
                 otherwise and -1 if the marker is not specific enough to be considered active
         """
-        sample_subset = self.cell_type_table[
-            self.cell_type_table.SampleID == sample_name
-        ]
+        sample_subset = self.cell_type_table[self.cell_type_table.SampleID == sample_name]
         cell_types = sample_subset[self.cell_type_key].values
 
         df = pd.DataFrame(
@@ -179,13 +174,9 @@ class SegmentationTFRecords:
         mplex_img = self.get_image(data_folder, marker)
         mplex_img /= self.normalization_dict[marker]
         binary_mask, instance_mask = self.get_inst_binary_masks(data_folder)
-
+        fov = os.path.split(data_folder)[-1]
         # get the cell types and marker activity mask
-        marker_activity, cell_types = self.get_marker_activity(
-            os.path.split(data_folder)[-2],
-            self.conversion_matrix,
-            marker
-        )
+        marker_activity, cell_types = self.get_marker_activity(fov, self.conversion_matrix, marker)
         marker_activity_mask = self.get_marker_activity_mask(
             instance_mask, binary_mask, marker_activity
         )
@@ -198,9 +189,11 @@ class SegmentationTFRecords:
             "dataset": self.dataset,
             "marker": marker,
             "cell_types": marker_activity,
+            "folder_name": fov,
         }
 
-    def tile_example(self, example, spatial_keys=[
+    def tile_example(
+        self, example, spatial_keys=[
             "mplex_img", "binary_mask", "instance_mask", "marker_activity_mask",
         ],
     ):
@@ -257,11 +250,15 @@ class SegmentationTFRecords:
         # CONVERSION MATRIX
         # read the file
         validate_paths(self.conversion_matrix_path)
-        self.conversion_matrix = pd.read_csv(self.conversion_matrix_path)
+        self.conversion_matrix = pd.read_csv(self.conversion_matrix_path, index_col=0)
 
         # check if markers were selected or take all markers from conversion matrix
         if self.selected_markers is None:
             self.selected_markers = list(self.conversion_matrix.columns)
+
+        # check if selected markers are a list
+        if not isinstance(self.selected_markers, list):
+            self.selected_markers = [self.selected_markers]
 
         # check if selected markers are in conversion matrix
         verify_in_list(
@@ -320,7 +317,7 @@ class SegmentationTFRecords:
         # check if sample_names in cell_type_table match sample_names in data_folder
         verify_in_list(
             sample_names=self.cell_type_table[self.sample_key].values,
-            data_folders=list_folders(self.data_dir)
+            data_folders=list_folders(self.data_dir),
         )
 
     def make_tf_record(self):
@@ -335,14 +332,17 @@ class SegmentationTFRecords:
         self.load_and_check_input()
 
         # initialize tfrecord writer
-        self.writer = tf.io.TFRecordWriter(self.tf_record_path)
+        if not hasattr(self, "writer"):
+            self.writer = tf.io.TFRecordWriter(
+                os.path.join(self.tf_record_path, self.dataset + ".tfrecord")
+            )
 
         # iterate through data_folders and markers to prepare and tile examples
         print("Preparing examples...")
         for data_folder in tqdm(self.data_folders):
             for marker in self.selected_markers:
-                example = self.prepare_example(self, data_folder, marker)
-                if self.tile:
+                example = self.prepare_example(data_folder, marker)
+                if self.tile_size:
                     example_list = self.tile_example(example)
                 else:
                     example_list = [example]
@@ -366,7 +366,7 @@ class SegmentationTFRecords:
         string_example = {}
 
         for key in example.keys():
-            #if key in spatial_keys:
+            # if key in spatial_keys:
             if type(example[key]) in [np.ndarray, tf.Tensor]:
                 # convert float32 into uint16 for compression and storage
                 if example[key].dtype not in [np.uint8, np.uint16]:
@@ -378,7 +378,7 @@ class SegmentationTFRecords:
                 string_example[key] = example[key].to_json().encode()
             elif type(example[key]) == str:
                 string_example[key] = example[key].encode()
-        # 
+        #
         train_example = tf.train.Example(
             features=tf.train.Features(
                 feature={

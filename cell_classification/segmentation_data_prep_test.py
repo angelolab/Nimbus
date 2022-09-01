@@ -9,10 +9,11 @@ from segmentation_data_prep import SegmentationTFRecords
 import copy
 import tensorflow as tf
 
+
 def prep_object(
     data_dir="path", cell_table_path="path", conversion_matrix_path="path",
-    normalization_dict_path="path", tf_record_path="path", tile_size=[256, 256],
-    stride=[256, 256], normalization_quantile=0.99, selected_markers=None,
+    normalization_dict_path="path", tf_record_path="path", tile_size=[256, 256], stride=[256, 256],
+    normalization_quantile=0.99, selected_markers=None,
 ):
     data_prep = SegmentationTFRecords(
         data_dir=data_dir, cell_table_path=cell_table_path,
@@ -28,13 +29,12 @@ def prep_object_and_inputs(temp_dir):
     # create temporary folders with data for the tests
     conversion_matrix = prepare_conversion_matrix()
     conversion_matrix_path = os.path.join(temp_dir, "conversion_matrix.csv")
-    conversion_matrix.to_csv(conversion_matrix_path, index=False)
-    norm_dict = {"CD11c": 1.0, "CD14": 1.0, "CD56": 1.0, "CD57": 1.0}
+    conversion_matrix.to_csv(conversion_matrix_path, index=True)
+    norm_dict = {"CD11c": 1.0, "CD4": 1.0, "CD56": 1.0, "CD57": 1.0}
     with open(os.path.join(temp_dir, "norm_dict.json"), "w") as f:
         json.dump(norm_dict, f)
     data_folders = prepare_test_data_folders(
-        5, temp_dir, list(norm_dict.keys()) + ["XYZ"],
-        random=True, scale=[0.5, 1.0, 1.5, 2.0, 5.0]
+        5, temp_dir, list(norm_dict.keys()) + ["XYZ"], random=True, scale=[0.5, 1.0, 1.5, 2.0, 5.0]
     )
     cell_table_path = os.path.join(temp_dir, "cell_type_table.csv")
     cell_table = prepare_cell_type_table()
@@ -45,6 +45,7 @@ def prep_object_and_inputs(temp_dir):
         tf_record_path=temp_dir,
         cell_table_path=cell_table_path,
         normalization_dict_path=None,
+        selected_markers=["CD4"],
     )
     data_prep.load_and_check_input()
     return data_prep, data_folders, conversion_matrix, cell_table
@@ -52,9 +53,10 @@ def prep_object_and_inputs(temp_dir):
 
 def prepare_conversion_matrix():
     conversion_matrix = pd.DataFrame(
-        np.random.randint(0, 2, size=(6, 4)),
-        columns=["CD11c", "CD14", "CD56", "CD57"],
-        index=["stromal", "FAP", "NK", "CD4T", "CD14", "CD163"],
+        np.random.randint(0, 3, size=(6, 4)).clip(0, 1),
+        # np.ones([6,4]),
+        columns=["CD11c", "CD4", "CD56", "CD57"],
+        index=["stromal", "FAP", "NK", "CD4", "CD14", "CD163"],
     )
     return conversion_matrix
 
@@ -63,7 +65,7 @@ def test_get_image():
     data_prep = prep_object()
     with tempfile.TemporaryDirectory() as temp_dir:
         test_img_1 = np.random.rand(256, 256)
-        test_img_2 = np.random.rand(256, 256,1)
+        test_img_2 = np.random.rand(256, 256, 1)
         imwrite(os.path.join(temp_dir, "CD8.tiff"), test_img_1)
         imwrite(os.path.join(temp_dir, "CD4.tiff"), test_img_2)
         CD8_img = data_prep.get_image(data_folder=temp_dir, marker="CD8")
@@ -106,7 +108,7 @@ def prepare_cell_type_table():
         {
             "SampleID": ["fov_1"] * 6 + ["fov_2"] * 6,
             "labels": [1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6],
-            "cluster_labels": ["stromal", "FAP", "NK"] * 2 + ["CD4T", "CD14", "CD163"] * 2,
+            "cluster_labels": ["stromal", "FAP", "NK"] * 2 + ["CD4", "CD14", "CD163"] * 2,
         }
     )
 
@@ -136,7 +138,7 @@ def test_calculate_normalization_matrix():
 
         # check if the normalization_dict has the correct values for stochastic images
         for marker, std in zip(norm_dict.keys(), scale):
-            assert norm_dict[marker] - 1 / (0.5 * std) < 0.001
+            assert np.isclose(norm_dict[marker], 1 / (std * 0.99), rtol=1e-3)
 
         # check if the normalization_dict is correctly written to the json file
         norm_dict_loaded = json.load(open(os.path.join(temp_dir, "norm_dict_test.json")))
@@ -154,8 +156,8 @@ def test_load_and_check_input():
         # create temporary folders with data for the tests
         conversion_matrix = prepare_conversion_matrix()
         conversion_matrix_path = os.path.join(temp_dir, "conversion_matrix.csv")
-        conversion_matrix.to_csv(conversion_matrix_path, index=False)
-        norm_dict = {"CD11c": 1.0, "CD14": 1.0, "CD56": 1.0, "CD57": 1.0}
+        conversion_matrix.to_csv(conversion_matrix_path, index=True)
+        norm_dict = {"CD11c": 1.0, "CD4": 1.0, "CD56": 1.0, "CD57": 1.0}
         with open(os.path.join(temp_dir, "norm_dict.json"), "w") as f:
             json.dump(norm_dict, f)
         data_folders = prepare_test_data_folders(5, temp_dir, list(norm_dict.keys()) + ["XYZ"])
@@ -171,6 +173,7 @@ def test_load_and_check_input():
             tf_record_path="path",
             cell_table_path=cell_table_path,
             normalization_dict_path=os.path.join(temp_dir, "norm_dict.json"),
+            selected_markers=["CD4"],
         )
         data_prep.load_and_check_input()
         assert np.array_equal(data_prep.conversion_matrix, conversion_matrix)
@@ -206,7 +209,7 @@ def test_load_and_check_input():
         conversion_matrix = pd.DataFrame(
             np.random.randint(0, 2, size=(6, 5)),
             columns=["CD11c", "CD14", "CD56", "CD57", "XYZ"],
-            index=["stromal", "FAP", "NK", "CD4T", "CD14", "CD163"],
+            index=["stromal", "FAP", "NK", "CD4", "CD14", "CD163"],
         )
         conversion_matrix_path = os.path.join(temp_dir, "conversion_matrix.csv")
         conversion_matrix.to_csv(conversion_matrix_path, index=False)
@@ -221,8 +224,8 @@ def test_load_and_check_input():
         # together with selected_markers were images are missing for in data_folders
         conversion_matrix = pd.DataFrame(
             np.random.randint(0, 2, size=(6, 6)),
-            columns=["CD11c", "CD14", "CD56", "CD57", "XYZ", "ZYX"],
-            index=["stromal", "FAP", "NK", "CD4T", "CD14", "CD163"],
+            columns=["CD11c", "CD4", "CD56", "CD57", "XYZ", "ZYX"],
+            index=["stromal", "FAP", "NK", "CD4", "CD14", "CD163"],
         )
         conversion_matrix_path = os.path.join(temp_dir, "conversion_matrix.csv")
         conversion_matrix.to_csv(conversion_matrix_path, index=False)
@@ -314,7 +317,7 @@ def test_get_marker_activity():
     cell_table = prepare_cell_type_table()
     conversion_matrix = prepare_conversion_matrix()
     data_prep.cell_type_table = cell_table
-    marker = "CD11c"
+    marker = "CD4"
     sample_name = "fov_1"
     fov_1_subset = cell_table[cell_table.SampleID == sample_name]
     marker_activity, _ = data_prep.get_marker_activity(sample_name, conversion_matrix, marker)
@@ -326,7 +329,7 @@ def test_get_marker_activity():
     for i in range(len(fov_1_subset.labels)):
         assert (
             marker_activity.activity[i]
-            == conversion_matrix.loc[fov_1_subset.cluster_labels[i], "CD11c"]
+            == conversion_matrix.loc[fov_1_subset.cluster_labels[i], "CD4"]
         )
 
 
@@ -397,15 +400,15 @@ def test_prepare_example():
     data_prep = prep_object()
     with tempfile.TemporaryDirectory() as temp_dir:
         data_prep, data_folders, _, _ = prep_object_and_inputs(temp_dir)
-        example = data_prep.prepare_example(data_folders[0], marker="CD11c")
+        example = data_prep.prepare_example(data_folders[0], marker="CD4")
         # check keys in example
         assert set(example.keys()) == set(
             [
                 "mplex_img", "binary_mask", "instance_mask", "imaging_platform",
-                "marker_activity_mask", "dataset", "cell_types", "marker",
+                "marker_activity_mask", "dataset", "cell_types", "marker", "folder_name",
             ]
         )
-        
+
         # check correct normalization of mplex_img
         assert example["mplex_img"].max() <= 1.0
         assert example["mplex_img"].min() >= 0.0
@@ -415,10 +418,65 @@ def test_prepare_example():
             assert example[key].ndim == 3
 
 
-def test_make_tf_record():
-    # data_prep = prep_object()
-    # data_prep.make_tf_record()
-    pass
+def test_serialize_example():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        data_prep, data_folders, _, _ = prep_object_and_inputs(temp_dir)
+        example = data_prep.prepare_example(os.path.join(temp_dir, "fov_1"), marker="CD4")
+        serialized_example = data_prep.serialize_example(copy.deepcopy(example))
+        deserialized_example = tf.train.Example.FromString(serialized_example)
+        parsed_example = parse_example(deserialized_example)
+
+        # compare parsed example to original example
+        # check if serialized example has the right keys
+        assert set(deserialized_example.features.feature.keys()) == set(example.keys())
+
+        # check string features
+        for key in ["dataset", "marker", "imaging_platform", "folder_name"]:
+            assert example[key] == parsed_example[key]
+        # check df features
+        for key in ["cell_types"]:
+            assert example[key].equals(parsed_example[key])
+        # check image features
+        for key in ["binary_mask", "marker_activity_mask", "instance_mask"]:
+            assert np.array_equal(example[key], parsed_example[key].numpy())
+        # check if mplex_img (float32) is correctly reconstructed from uint16 png
+        assert np.allclose(example["mplex_img"], parsed_example["mplex_img"].numpy(), atol=1e-4)
+
+
+feature_description = {
+    "mplex_img": tf.io.RaggedFeature(tf.string),
+    "binary_mask": tf.io.RaggedFeature(tf.string),
+    "instance_mask": tf.io.RaggedFeature(tf.string),
+    "imaging_platform": tf.io.RaggedFeature(tf.string),
+    "marker_activity_mask": tf.io.RaggedFeature(tf.string),
+    "dataset": tf.io.RaggedFeature(tf.string),
+    "marker": tf.io.RaggedFeature(tf.string),
+    "cell_types": tf.io.RaggedFeature(tf.string),
+    "folder_name": tf.io.RaggedFeature(tf.string),
+}
+
+
+def parse_dict(deserialized_dict):
+    """Parse an example into a dictionary of tensors
+
+    Args:
+        deserialized_dict: a deserialized dictionary
+    Returns:
+        a dictionary of tensors and metadata strings
+    """
+    example = {}
+    for key in ["dataset", "marker", "imaging_platform", "folder_name"]:  #
+        example[key] = deserialized_dict[key][0].numpy().decode()
+    for key in ["cell_types"]:
+        example[key] = pd.read_json(deserialized_dict[key][0].numpy().decode())
+    for key in ["binary_mask", "marker_activity_mask"]:
+        example[key] = tf.io.decode_png(deserialized_dict[key][0])
+    for key in ["mplex_img", "instance_mask"]:
+        example[key] = tf.io.decode_png(deserialized_dict[key][0], dtype=tf.uint16)
+    example["mplex_img"] = tf.cast(example["mplex_img"], tf.float32) / tf.constant(
+        np.iinfo(np.uint16).max, dtype=tf.float32
+    )
+    return example
 
 
 def parse_example(deserialized_example):
@@ -429,61 +487,60 @@ def parse_example(deserialized_example):
     Returns:
         a dictionary of tensors and metadata strings
     """
-    
+
     example = {}
-    for key in ["dataset", "marker", "imaging_platform"]: #  
-            example[key] = deserialized_example.features.feature[key].bytes_list.value[0].decode()
+    for key in ["dataset", "marker", "imaging_platform", "folder_name"]:  #
+        example[key] = deserialized_example.features.feature[key].bytes_list.value[0].decode()
     for key in ["cell_types"]:
         example[key] = pd.read_json(
             deserialized_example.features.feature[key].bytes_list.value[0].decode()
-            )
+        )
     for key in ["binary_mask", "marker_activity_mask"]:
         example[key] = tf.io.decode_png(
             deserialized_example.features.feature[key].bytes_list.value[0]
-            )
-    for key in ["mplex_img"  , "instance_mask"]:
+        )
+    for key in ["mplex_img", "instance_mask"]:
         example[key] = tf.io.decode_png(
-            deserialized_example.features.feature[key].bytes_list.value[0],dtype=tf.uint16
-            )
-    example["mplex_img"] = tf.cast(example["mplex_img"], tf.float32) \
-       / tf.constant(np.iinfo(np.uint16).max, dtype=tf.float32)
+            deserialized_example.features.feature[key].bytes_list.value[0], dtype=tf.uint16
+        )
+    example["mplex_img"] = tf.cast(example["mplex_img"], tf.float32) / tf.constant(
+        np.iinfo(np.uint16).max, dtype=tf.float32
+    )
     return example
 
 
-def test_serialize_example():
+def test_make_tf_record():
     with tempfile.TemporaryDirectory() as temp_dir:
         data_prep, data_folders, _, _ = prep_object_and_inputs(temp_dir)
-        example = data_prep.prepare_example(data_folders[0], marker="CD11c")
-        serialized_example = data_prep.serialize_example(copy.deepcopy(example))
-        deserialized_example = tf.train.Example.FromString(serialized_example)
-        parsed_example = parse_example(deserialized_example)
+        data_prep.tf_record_path = temp_dir
+        data_prep.make_tf_record()
+        # check if tf record was created
+        assert os.path.exists(os.path.join(temp_dir, data_prep.dataset + ".tfrecord"))
 
-        for key in ["dataset", "marker", "imaging_platform"]:
-            assert example[key] == parsed_example[key]
-        # for key in ["cell_types"]:
-        #     assert example[key].equals(parsed_example[key])
-        for key in ["binary_mask", "marker_activity_mask", "instance_mask"]: # "mplex_img" 
-            assert np.array_equal(example[key], parsed_example[key].numpy())
-        
-        # tomorrow: parse function doesn't work for mplex_img and for cell_types
+        # check if tf record has the right number of examples
+        dataset = tf.data.TFRecordDataset(os.path.join(temp_dir, data_prep.dataset + ".tfrecord"))
+        num_examples = 0
+        for string_record in dataset:
+            num_examples += 1
+        assert num_examples == 5
 
-        # # check if serialized example has the right keys
-        # assert set(deserialized_example.features.feature.keys()) == set(example.keys())
+        # parse samples and compare to original example
+        deserialized_dict = tf.io.parse_single_example(string_record, feature_description)
+        parsed_dict = parse_dict(deserialized_dict)
+        example = data_prep.prepare_example(
+            os.path.join(temp_dir, parsed_dict["folder_name"]), marker="CD4"
+        )
 
-        # # check string features
-        # for key in ["dataset", "marker", "imaging_platform"]: #  
-        #     assert deserialized_example.features.feature[key].bytes_list.value[0].decode() \
-        #         == example[key]
-        
-        # # check df features
-        # for key in ["cell_types"]:
-        #     pd.read_json(deserialized_example.features.feature[key].bytes_list.value[0].decode()) \
-        #         == example[key]
-        
-        # # check if deserialized example has the right values
-        # for key in ["binary_mask", "marker_activity_mask"]:
-        #     img = tf.io.decode_png(deserialized_example.features.feature[key].bytes_list.value[0])
-        #     assert np.array_equal(img, example[key])
-        # for key in ["mplex_img"  , "instance_mask"]:
-        #     img = tf.io.decode_png(deserialized_example.features.feature[key].bytes_list.value[0],dtype=tf.uint16)
-        #     assert np.array_equal(img, example[key])
+        # check if serialized example has the right keys
+        assert set(parsed_dict.keys()) == set(example.keys())
+        # check string features
+        for key in ["dataset", "marker", "imaging_platform", "folder_name"]:
+            assert example[key] == parsed_dict[key]
+        # check df features, empty df is also okay
+        for key in ["cell_types"]:
+            assert example[key].equals(parsed_dict[key]) or example[key].empty
+        # check image features
+        for key in ["binary_mask", "marker_activity_mask", "instance_mask"]:
+            assert np.array_equal(example[key], parsed_dict[key].numpy())
+        # check if mplex_img (float32) is correctly reconstructed from uint16 png
+        assert np.allclose(example["mplex_img"], parsed_dict["mplex_img"].numpy(), atol=1e-4)
