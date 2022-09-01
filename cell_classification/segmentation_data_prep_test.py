@@ -170,7 +170,7 @@ def test_load_and_check_input():
         data_prep = prep_object(
             data_dir=temp_dir,
             conversion_matrix_path=conversion_matrix_path,
-            tf_record_path="path",
+            tf_record_path=temp_dir,
             cell_table_path=cell_table_path,
             normalization_dict_path=os.path.join(temp_dir, "norm_dict.json"),
             selected_markers=["CD4"],
@@ -190,7 +190,7 @@ def test_load_and_check_input():
         data_prep = prep_object(
             data_dir=temp_dir,
             conversion_matrix_path=conversion_matrix_path,
-            tf_record_path="path",
+            tf_record_path=temp_dir,
             normalization_dict_path=os.path.join(temp_dir, "norm_dict.json"),
             cell_table_path=cell_table_path,
         )
@@ -514,11 +514,12 @@ def test_make_tf_record():
         data_prep, data_folders, _, _ = prep_object_and_inputs(temp_dir)
         data_prep.tf_record_path = temp_dir
         data_prep.make_tf_record()
+        tf_record_path = os.path.join(temp_dir, data_prep.dataset + ".tfrecord")
         # check if tf record was created
-        assert os.path.exists(os.path.join(temp_dir, data_prep.dataset + ".tfrecord"))
+        assert os.path.exists(tf_record_path)
 
         # check if tf record has the right number of examples
-        dataset = tf.data.TFRecordDataset(os.path.join(temp_dir, data_prep.dataset + ".tfrecord"))
+        dataset = tf.data.TFRecordDataset(tf_record_path)
         num_examples = 0
         for string_record in dataset:
             num_examples += 1
