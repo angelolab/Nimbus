@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import json
 from tifffile import imwrite
-from segmentation_data_prep import SegmentationTFRecords
+from segmentation_data_prep import SegmentationTFRecords, feature_description, parse_dict
 import copy
 import tensorflow as tf
 
@@ -354,10 +354,10 @@ def test_get_marker_activity_mask():
         instance_mask, binary_mask, marker_activity
     )
 
-    # check if the right spatial dimensions got returned
+    # check if returned spatial dimensions are correct
     assert marker_activity_mask.shape == instance_mask.shape
 
-    # check if the right marker activity values are returned
+    # check if returned marker activity values are correct
     for i in np.unique(instance_mask):
         if i == 0:
             continue
@@ -381,16 +381,16 @@ def test_tile_example():
     data_prep = prep_object(tile_size=[128, 128], stride=[128, 128])
     tiled_examples = data_prep.tile_example(example)
 
-    # check if the right number of tiles got returned
+    # check if the correct number of tiles got returned
     assert len(tiled_examples) == 16
 
-    # check if the right spatial dimensions got returned and dtype is correct
+    # check if the correct spatial dimensions got returned and dtype is correct
     for key in ["mplex_img", "binary_mask", "instance_mask", "marker_activity_mask"]:
         assert tiled_examples[0][key].dtype == example[key].dtype
         assert tiled_examples[0][key].shape[:2] == (128, 128)
         assert tiled_examples[-1][key].shape[:2] == (128, 128)
 
-    # check if the right values for non spatial keys got returned
+    # check if the correct values for non spatial keys got returned
     for key in ["dataset", "platform", "cell_types", "marker"]:
         assert tiled_examples[0][key] == example[key]
         assert tiled_examples[-1][key] == example[key]
@@ -420,15 +420,15 @@ def test_prepare_example():
 
 def test_serialize_example():
     with tempfile.TemporaryDirectory() as temp_dir:
-        data_prep, data_folders, _, _ = prep_object_and_inputs(temp_dir)
+        data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
         example = data_prep.prepare_example(os.path.join(temp_dir, "fov_1"), marker="CD4")
         serialized_example = data_prep.serialize_example(copy.deepcopy(example))
-        deserialized_example = tf.train.Example.FromString(serialized_example)
-        parsed_example = parse_example(deserialized_example)
+        deserialized_dict = tf.io.parse_single_example(serialized_example, feature_description)
+        parsed_example = parse_dict(deserialized_dict)
 
         # compare parsed example to original example
-        # check if serialized example has the right keys
-        assert set(deserialized_example.features.feature.keys()) == set(example.keys())
+        # check if parsed example has the correct keys
+        assert set(parsed_example.keys()) == set(example.keys())
 
         # check string features
         for key in ["dataset", "marker", "imaging_platform", "folder_name"]:
@@ -443,75 +443,9 @@ def test_serialize_example():
         assert np.allclose(example["mplex_img"], parsed_example["mplex_img"].numpy(), atol=1e-4)
 
 
-feature_description = {
-    "mplex_img": tf.io.RaggedFeature(tf.string),
-    "binary_mask": tf.io.RaggedFeature(tf.string),
-    "instance_mask": tf.io.RaggedFeature(tf.string),
-    "imaging_platform": tf.io.RaggedFeature(tf.string),
-    "marker_activity_mask": tf.io.RaggedFeature(tf.string),
-    "dataset": tf.io.RaggedFeature(tf.string),
-    "marker": tf.io.RaggedFeature(tf.string),
-    "cell_types": tf.io.RaggedFeature(tf.string),
-    "folder_name": tf.io.RaggedFeature(tf.string),
-}
-
-
-def parse_dict(deserialized_dict):
-    """Parse an example into a dictionary of tensors
-
-    Args:
-        deserialized_dict: a deserialized dictionary
-    Returns:
-        a dictionary of tensors and metadata strings
-    """
-    example = {}
-    for key in ["dataset", "marker", "imaging_platform", "folder_name"]:  #
-        example[key] = deserialized_dict[key][0].numpy().decode()
-    for key in ["cell_types"]:
-        example[key] = pd.read_json(deserialized_dict[key][0].numpy().decode())
-    for key in ["binary_mask", "marker_activity_mask"]:
-        example[key] = tf.io.decode_png(deserialized_dict[key][0])
-    for key in ["mplex_img", "instance_mask"]:
-        example[key] = tf.io.decode_png(deserialized_dict[key][0], dtype=tf.uint16)
-    example["mplex_img"] = tf.cast(example["mplex_img"], tf.float32) / tf.constant(
-        np.iinfo(np.uint16).max, dtype=tf.float32
-    )
-    return example
-
-
-def parse_example(deserialized_example):
-    """Parse an example into a dictionary of tensors
-
-    Args:
-        deserialized_example: a tf.Example protobuf
-    Returns:
-        a dictionary of tensors and metadata strings
-    """
-
-    example = {}
-    for key in ["dataset", "marker", "imaging_platform", "folder_name"]:  #
-        example[key] = deserialized_example.features.feature[key].bytes_list.value[0].decode()
-    for key in ["cell_types"]:
-        example[key] = pd.read_json(
-            deserialized_example.features.feature[key].bytes_list.value[0].decode()
-        )
-    for key in ["binary_mask", "marker_activity_mask"]:
-        example[key] = tf.io.decode_png(
-            deserialized_example.features.feature[key].bytes_list.value[0]
-        )
-    for key in ["mplex_img", "instance_mask"]:
-        example[key] = tf.io.decode_png(
-            deserialized_example.features.feature[key].bytes_list.value[0], dtype=tf.uint16
-        )
-    example["mplex_img"] = tf.cast(example["mplex_img"], tf.float32) / tf.constant(
-        np.iinfo(np.uint16).max, dtype=tf.float32
-    )
-    return example
-
-
 def test_make_tf_record():
     with tempfile.TemporaryDirectory() as temp_dir:
-        data_prep, data_folders, _, _ = prep_object_and_inputs(temp_dir)
+        data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
         data_prep.tf_record_path = temp_dir
         data_prep.make_tf_record()
         tf_record_path = os.path.join(temp_dir, data_prep.dataset + ".tfrecord")

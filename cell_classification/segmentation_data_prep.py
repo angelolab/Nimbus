@@ -427,3 +427,39 @@ class SegmentationTFRecords:
             json.dump(normalization_matrix, f)
         self.normalization_dict = normalization_matrix
         return normalization_matrix
+
+
+feature_description = {
+    "mplex_img": tf.io.RaggedFeature(tf.string),
+    "binary_mask": tf.io.RaggedFeature(tf.string),
+    "instance_mask": tf.io.RaggedFeature(tf.string),
+    "imaging_platform": tf.io.RaggedFeature(tf.string),
+    "marker_activity_mask": tf.io.RaggedFeature(tf.string),
+    "dataset": tf.io.RaggedFeature(tf.string),
+    "marker": tf.io.RaggedFeature(tf.string),
+    "cell_types": tf.io.RaggedFeature(tf.string),
+    "folder_name": tf.io.RaggedFeature(tf.string),
+}
+
+
+def parse_dict(deserialized_dict):
+    """Parse an example into a dictionary of tensors
+
+    Args:
+        deserialized_dict: a deserialized dictionary
+    Returns:
+        a dictionary of tensors and metadata strings
+    """
+    example = {}
+    for key in ["dataset", "marker", "imaging_platform", "folder_name"]:  #
+        example[key] = deserialized_dict[key][0].numpy().decode()
+    for key in ["cell_types"]:
+        example[key] = pd.read_json(deserialized_dict[key][0].numpy().decode())
+    for key in ["binary_mask", "marker_activity_mask"]:
+        example[key] = tf.io.decode_png(deserialized_dict[key][0])
+    for key in ["mplex_img", "instance_mask"]:
+        example[key] = tf.io.decode_png(deserialized_dict[key][0], dtype=tf.uint16)
+    example["mplex_img"] = tf.cast(example["mplex_img"], tf.float32) / tf.constant(
+        np.iinfo(np.uint16).max, dtype=tf.float32
+    )
+    return example
