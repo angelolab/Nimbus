@@ -132,6 +132,7 @@ class SegmentationTFRecords:
             {
                 "labels": sample_subset[self.segment_label_key],
                 "activity": conversion_matrix.loc[cell_types, marker].values,
+                "cell_type": cell_types,
             }
         )
         return df, cell_types
@@ -188,7 +189,7 @@ class SegmentationTFRecords:
             "marker_activity_mask": marker_activity_mask.astype(np.uint8),
             "dataset": self.dataset,
             "marker": marker,
-            "cell_types": marker_activity,
+            "marker_activity": marker_activity,
             "folder_name": fov,
         }
 
@@ -201,10 +202,6 @@ class SegmentationTFRecords:
         Args:
             example (dict):
                 The example to tile
-            tile_size (list):
-                The size of the tiles
-            stride (list):
-                The stride of the tiles
             spatial_keys (list):
                 The keys in the example to tile
         Returns:
@@ -223,7 +220,9 @@ class SegmentationTFRecords:
             tiled_examples[key] = res.reshape([sh[0] * sh[1]] + sh[3:])  # tiles x H x W x C
 
         # store individual tiled examples in a list of dicts
-        non_spatial_keys = [key for key in example if key not in spatial_keys]
+        non_spatial_keys = [
+            key for key in example if key not in spatial_keys + ["marker_activity"]
+        ]
         num_tiles = tiled_examples[spatial_keys[0]].shape[0]
         example_list = []
         for tile in range(num_tiles):
@@ -232,6 +231,12 @@ class SegmentationTFRecords:
                 example_out[key] = tiled_examples[key][tile]
             for non_spatial_key in non_spatial_keys:
                 example_out[non_spatial_key] = example[non_spatial_key]
+
+            # subset marker_activity to the labels that are present in the tile
+            label_subset = np.unique(example_out["instance_mask"]).astype(np.uint16).tolist()
+            example_out["marker_activity"] = example["marker_activity"].loc[
+                [True if i in label_subset else False for i in example["marker_activity"].labels]
+            ]
             example_list.append(example_out)
 
         return example_list
@@ -352,7 +357,6 @@ class SegmentationTFRecords:
                     example_serialized = self.serialize_example(example)
                     self.writer.write(example_serialized)
         self.writer.close()
-        return None
 
     def serialize_example(self, example):
         """Serializes an example dict to a tfrecord example
@@ -437,7 +441,7 @@ feature_description = {
     "marker_activity_mask": tf.io.RaggedFeature(tf.string),
     "dataset": tf.io.RaggedFeature(tf.string),
     "marker": tf.io.RaggedFeature(tf.string),
-    "cell_types": tf.io.RaggedFeature(tf.string),
+    "marker_activity": tf.io.RaggedFeature(tf.string),
     "folder_name": tf.io.RaggedFeature(tf.string),
 }
 
@@ -451,9 +455,9 @@ def parse_dict(deserialized_dict):
         a dictionary of tensors and metadata strings
     """
     example = {}
-    for key in ["dataset", "marker", "imaging_platform", "folder_name"]:  #
+    for key in ["dataset", "marker", "imaging_platform", "folder_name"]:
         example[key] = deserialized_dict[key][0].numpy().decode()
-    for key in ["cell_types"]:
+    for key in ["marker_activity"]:
         example[key] = pd.read_json(deserialized_dict[key][0].numpy().decode())
     for key in ["binary_mask", "marker_activity_mask"]:
         example[key] = tf.io.decode_png(deserialized_dict[key][0])

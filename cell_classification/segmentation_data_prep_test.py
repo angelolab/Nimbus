@@ -368,14 +368,29 @@ def test_get_marker_activity_mask():
 
 
 def test_tile_example():
+    marker_activity = pd.DataFrame(
+        {
+            "labels": np.array([1, 2, 5, 7, 9, 11], dtype=np.uint16),
+            "activity": [1, 0, 0, 0, 0, 1],
+            "cell_type": ["T cell", "B cell", "T cell", "B cell", "T cell", "B cell"],
+        }
+    )
+    instance_mask = np.zeros([512, 512], dtype=np.uint16)
+    instance_mask[0:32, 0:32] = 1
+    instance_mask[0:32, 32:64] = 2
+    instance_mask[0:32, 64:96] = 5
+    instance_mask[476:, 476:] = 7
+    instance_mask[444:476, 476:] = 9
+    instance_mask[476:, 444:476] = 11
+
     example = {
         "mplex_img": np.random.rand(512, 512, 3).astype(np.float32),
         "binary_mask": np.random.randint(0, 2, [512, 512, 1]).astype(np.uint8),
-        "instance_mask": np.random.randint(0, 10000, [512, 512]).astype(np.uint16),
+        "instance_mask": instance_mask,
         "marker_activity_mask": np.random.randint(0, 2, [512, 512, 21]).astype(np.uint8),
         "dataset": "test_dataset",
         "platform": "mibi",
-        "cell_types": ["CD11c", "CD11b", "CD11a"],
+        "marker_activity": marker_activity,
         "marker": "CD11c",
     }
     data_prep = prep_object(tile_size=[128, 128], stride=[128, 128])
@@ -391,9 +406,24 @@ def test_tile_example():
         assert tiled_examples[-1][key].shape[:2] == (128, 128)
 
     # check if the correct values for non spatial keys got returned
-    for key in ["dataset", "platform", "cell_types", "marker"]:
+    for key in ["dataset", "platform", "marker"]:
         assert tiled_examples[0][key] == example[key]
         assert tiled_examples[-1][key] == example[key]
+
+    # check if the correct tiles are returned
+    for key in ["mplex_img", "binary_mask", "instance_mask", "marker_activity_mask"]:
+        assert np.array_equal(
+            tiled_examples[0][key], example[key][:128, :128, ...]
+        )
+        assert np.array_equal(
+            tiled_examples[-1][key], example[key][-128:, -128:, ...]
+        )
+
+    # check if marker_activity contains the correct subset of labels
+    assert np.array_equal(
+        np.unique(tiled_examples[0]["marker_activity"].labels),
+        np.array([1, 2, 5], dtype=np.uint16)
+    )
 
 
 def test_prepare_example():
@@ -405,7 +435,7 @@ def test_prepare_example():
         assert set(example.keys()) == set(
             [
                 "mplex_img", "binary_mask", "instance_mask", "imaging_platform",
-                "marker_activity_mask", "dataset", "cell_types", "marker", "folder_name",
+                "marker_activity_mask", "dataset", "marker", "folder_name", "marker_activity",
             ]
         )
 
@@ -434,7 +464,7 @@ def test_serialize_example():
         for key in ["dataset", "marker", "imaging_platform", "folder_name"]:
             assert example[key] == parsed_example[key]
         # check df features
-        for key in ["cell_types"]:
+        for key in ["marker_activity"]:
             assert example[key].equals(parsed_example[key])
         # check image features
         for key in ["binary_mask", "marker_activity_mask", "instance_mask"]:
@@ -472,7 +502,7 @@ def test_make_tf_record():
         for key in ["dataset", "marker", "imaging_platform", "folder_name"]:
             assert example[key] == parsed_dict[key]
         # check df features, empty df is also okay
-        for key in ["cell_types"]:
+        for key in ["marker_activity"]:
             assert example[key].equals(parsed_dict[key]) or example[key].empty
         # check image features
         for key in ["binary_mask", "marker_activity_mask", "instance_mask"]:
