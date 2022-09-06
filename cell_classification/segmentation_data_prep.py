@@ -87,6 +87,7 @@ class SegmentationTFRecords:
                 The multiplexed image
         """
         img = imread(os.path.join(data_folder, marker + ".tiff"))
+        img = np.squeeze(img)
         if img.ndim == 2:
             img = np.expand_dims(img, axis=-1)
         return img
@@ -106,6 +107,7 @@ class SegmentationTFRecords:
                 The instance mask
         """
         instance_mask = imread(os.path.join(data_folder, self.segmentation_fname + ".tiff"))
+        instance_mask = np.squeeze(instance_mask)
         if instance_mask.ndim == 2:
             instance_mask = np.expand_dims(instance_mask, axis=-1)
         edge = find_boundaries(instance_mask, mode="inner").astype(np.uint8)
@@ -173,7 +175,7 @@ class SegmentationTFRecords:
                 Example dict
         """
         # load and normalize the multiplexed image and masks
-        mplex_img = self.get_image(data_folder, marker)
+        mplex_img = self.get_image(data_folder, marker).astype(np.float32)
         mplex_img /= self.normalization_dict[marker]
         binary_mask, instance_mask = self.get_inst_binary_masks(data_folder)
         fov = os.path.split(data_folder)[-1]
@@ -333,10 +335,10 @@ class SegmentationTFRecords:
             raise ValueError("The sample_key is not in the cell_type_table")
 
         # check if sample_names in cell_type_table match sample_names in data_folder
-        verify_in_list(
-            sample_names=self.cell_type_table[self.sample_key].values,
-            data_folders=list_folders(self.data_dir),
-        )
+        # verify_in_list(
+        #     sample_names=self.cell_type_table[self.sample_key].values,
+        #     data_folders=list_folders(self.data_dir),
+        # )
 
     def make_tf_record(self):
         """Iterates through the data_folders and loads, transforms and
@@ -389,7 +391,8 @@ class SegmentationTFRecords:
             if type(example[key]) in [np.ndarray, tf.Tensor]:
                 # convert float32 into uint16 for compression and storage
                 if example[key].dtype not in [np.uint8, np.uint16]:
-                    example[key] = example[key] * np.iinfo(np.uint16).max
+                    
+                    example[key] = example[key].clip(0,20) * (np.iinfo(np.uint16).max/20)
                     example[key] = example[key].astype(np.uint16)
                 # convert to bytes
                 string_example[key] = tf.io.encode_png(example[key]).numpy()
@@ -434,7 +437,7 @@ class SegmentationTFRecords:
         # calculate the normalization matrix
         normalization_matrix = {}
         for marker in selected_markers:
-            normalization_matrix[marker] = 1.0 / np.mean(quantiles[marker])
+            normalization_matrix[marker] = np.mean(quantiles[marker])
 
         # check path and save the normalization matrix
         if not str(self.normalization_dict_path).endswith(".json"):
@@ -478,6 +481,6 @@ def parse_dict(deserialized_dict):
     for key in ["mplex_img", "instance_mask"]:
         example[key] = tf.io.decode_png(deserialized_dict[key][0], dtype=tf.uint16)
     example["mplex_img"] = tf.cast(example["mplex_img"], tf.float32) / tf.constant(
-        np.iinfo(np.uint16).max, dtype=tf.float32
+        (np.iinfo(np.uint16).max/20), dtype=tf.float32
     )
     return example
