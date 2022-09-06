@@ -10,7 +10,7 @@ from tqdm import tqdm
 import json
 from ark.utils.misc_utils import verify_in_list
 from ark.utils.io_utils import list_folders, validate_paths
-import re
+import copy
 
 
 class SegmentationTFRecords:
@@ -18,7 +18,7 @@ class SegmentationTFRecords:
 
     def __init__(
         self, data_dir, cell_table_path, conversion_matrix_path, imaging_platform, dataset,
-        tile_size, tf_record_path, selected_markers=None, normalization_dict_path=None,
+        tile_size, stride, tf_record_path, selected_markers=None, normalization_dict_path=None,
         normalization_quantile=0.99, cell_type_key="cluster_labels", sample_key="SampleID",
         segmentation_fname="cell_segmentation", segment_label_key="labels",
     ):
@@ -37,6 +37,8 @@ class SegmentationTFRecords:
                 The dataset where the imaging data comes from
             tile_size list [int,int]:
                 The size of the tiles to use for the segmentation model
+            stride list [int,int]:
+                The stride to tile the data
             tf_record_path (str):
                 The path to the tf record to make
             selected_markers (list):
@@ -68,6 +70,8 @@ class SegmentationTFRecords:
         self.tf_record_path = tf_record_path
         self.cell_type_key = cell_type_key
         self.cell_table_path = cell_table_path
+        self.tile_size = tile_size
+        self.stride = stride
 
     def get_image(self, data_folder, marker):
         """Loads the images from a single data_folder
@@ -83,6 +87,8 @@ class SegmentationTFRecords:
                 The multiplexed image
         """
         img = imread(os.path.join(data_folder, marker + ".tiff"))
+        if img.ndim == 2:
+            img = np.expand_dims(img, axis=-1)
         return img
 
     def get_inst_binary_masks(self, data_folder):
@@ -100,6 +106,8 @@ class SegmentationTFRecords:
                 The instance mask
         """
         instance_mask = imread(os.path.join(data_folder, self.segmentation_fname + ".tiff"))
+        if instance_mask.ndim == 2:
+            instance_mask = np.expand_dims(instance_mask, axis=-1)
         edge = find_boundaries(instance_mask, mode="inner").astype(np.uint8)
         interior = np.logical_and(edge == 0, instance_mask > 0).astype(np.uint8)
         return interior, instance_mask
@@ -125,9 +133,10 @@ class SegmentationTFRecords:
             {
                 "labels": sample_subset[self.segment_label_key],
                 "activity": conversion_matrix.loc[cell_types, marker].values,
+                "cell_type": cell_types,
             }
         )
-        return df
+        return df, cell_types
 
     def get_marker_activity_mask(self, instance_mask, binary_mask, marker_activity):
         """Makes a mask from the marker activity
@@ -167,12 +176,11 @@ class SegmentationTFRecords:
         mplex_img = self.get_image(data_folder, marker)
         mplex_img /= self.normalization_dict[marker]
         binary_mask, instance_mask = self.get_inst_binary_masks(data_folder)
-
+        fov = os.path.split(data_folder)[-1]
         # get the cell types and marker activity mask
-        cell_types = self.get_cell_types(data_folder)
-        marker_activity = self.get_marker_activity(cell_types, marker)
+        marker_activity, cell_types = self.get_marker_activity(fov, self.conversion_matrix, marker)
         marker_activity_mask = self.get_marker_activity_mask(
-            instance_mask, cell_types, marker_activity
+            instance_mask, binary_mask, marker_activity
         )
         return {
             "mplex_img": mplex_img.astype(np.float32),
@@ -182,19 +190,69 @@ class SegmentationTFRecords:
             "marker_activity_mask": marker_activity_mask.astype(np.uint8),
             "dataset": self.dataset,
             "marker": marker,
-            "cell_types": cell_types,
+            "activity_df": marker_activity,
+            "folder_name": fov,
         }
 
-    def tile_example(example, tile_size):
+    def tile_example(
+        self, example, spatial_keys=[
+            "mplex_img", "binary_mask", "instance_mask", "marker_activity_mask",
+        ],
+    ):
         """Tiles the example into a grid of tiles
         Args:
             example (dict):
                 The example to tile
+            spatial_keys (list):
+                The keys in the example to tile
         Returns:
             list:
                 List of example dicts, one for each tile
         """
-        return None
+        # tile the example
+        example = copy.deepcopy(example)
+        tiled_examples = {}
+        for key in spatial_keys:
+            if example[key].ndim == 2:
+                example[key] = np.expand_dims(example[key], axis=-1)
+
+            # pad images if they are not divisible by the tile size
+            if not example[key].shape[0] % self.tile_size[0] == 0 or \
+                    not example[key].shape[1] % self.tile_size[1] == 0:
+                example[key] = np.pad(
+                    example[key],
+                    ((0, example[key].shape[0] % self.tile_size[0]),
+                     (0, example[key].shape[1] % self.tile_size[1]),
+                     (0, 0)),
+                    mode="constant",
+                )
+            res = np.lib.stride_tricks.sliding_window_view(
+                example[key], window_shape=self.tile_size + list(example[key].shape[2:])
+            )[:: self.stride[0], :: self.stride[1]]
+            sh = list(res.shape)
+            tiled_examples[key] = res.reshape([sh[0] * sh[1]] + sh[3:])  # tiles x H x W x C
+
+        # store individual tiled examples in a list of dicts
+        non_spatial_keys = [
+            key for key in example if key not in spatial_keys + ["activity_df"]
+        ]
+        num_tiles = tiled_examples[spatial_keys[0]].shape[0]
+        example_list = []
+        for tile in range(num_tiles):
+            example_out = {}
+            for key in spatial_keys:
+                example_out[key] = tiled_examples[key][tile]
+            for non_spatial_key in non_spatial_keys:
+                example_out[non_spatial_key] = example[non_spatial_key]
+
+            # subset marker_activity to the labels that are present in the tile
+            label_subset = np.unique(example_out["instance_mask"]).astype(np.uint16).tolist()
+            example_out["activity_df"] = example["activity_df"].loc[
+                [True if i in label_subset else False for i in example["activity_df"].labels]
+            ]
+            example_list.append(example_out)
+
+        return example_list
 
     def load_and_check_input(self):
         """Checks the input for correctness"""
@@ -210,11 +268,15 @@ class SegmentationTFRecords:
         # CONVERSION MATRIX
         # read the file
         validate_paths(self.conversion_matrix_path)
-        self.conversion_matrix = pd.read_csv(self.conversion_matrix_path)
+        self.conversion_matrix = pd.read_csv(self.conversion_matrix_path, index_col=0)
 
         # check if markers were selected or take all markers from conversion matrix
         if self.selected_markers is None:
             self.selected_markers = list(self.conversion_matrix.columns)
+
+        # check if selected markers are a list
+        if not isinstance(self.selected_markers, list):
+            self.selected_markers = [self.selected_markers]
 
         # check if selected markers are in conversion matrix
         verify_in_list(
@@ -273,10 +335,10 @@ class SegmentationTFRecords:
         # check if sample_names in cell_type_table match sample_names in data_folder
         verify_in_list(
             sample_names=self.cell_type_table[self.sample_key].values,
-            data_folders=list_folders(self.data_dir)
+            data_folders=list_folders(self.data_dir),
         )
 
-    def make_tf_record(self, data_folders):
+    def make_tf_record(self):
         """Iterates through the data_folders and loads, transforms and
         serializes a tfrecord example for each data_folder
 
@@ -284,7 +346,69 @@ class SegmentationTFRecords:
             tf_record_path (str):
                 The path to the tf record to make
         """
-        return None
+        # load, prepare and check data
+        self.load_and_check_input()
+
+        # initialize tfrecord writer
+        if not hasattr(self, "writer"):
+            self.writer = tf.io.TFRecordWriter(
+                os.path.join(self.tf_record_path, self.dataset + ".tfrecord")
+            )
+
+        # iterate through data_folders and markers to prepare and tile examples
+        print("Preparing examples...")
+        for data_folder in tqdm(self.data_folders):
+            for marker in self.selected_markers:
+                example = self.prepare_example(data_folder, marker)
+                if self.tile_size:
+                    example_list = self.tile_example(example)
+                else:
+                    example_list = [example]
+
+                # serialize and write examples to tfrecord
+                for example in example_list:
+                    example_serialized = self.serialize_example(example)
+                    self.writer.write(example_serialized)
+        self.writer.close()
+        delattr(self, "writer")
+
+    def serialize_example(self, example):
+        """Serializes an example dict to a tfrecord example
+
+        Args:
+            example (dict):
+                The example dict to serialize
+        Returns:
+            tf.train.Example:
+                The serialized example
+        """
+        string_example = {}
+
+        for key in example.keys():
+            # if key in spatial_keys:
+            if type(example[key]) in [np.ndarray, tf.Tensor]:
+                # convert float32 into uint16 for compression and storage
+                if example[key].dtype not in [np.uint8, np.uint16]:
+                    example[key] = example[key] * np.iinfo(np.uint16).max
+                    example[key] = example[key].astype(np.uint16)
+                # convert to bytes
+                string_example[key] = tf.io.encode_png(example[key]).numpy()
+            elif type(example[key]) in [pd.DataFrame, pd.Series]:
+                string_example[key] = example[key].to_json().encode()
+            elif type(example[key]) == str:
+                string_example[key] = example[key].encode()
+        #
+        train_example = tf.train.Example(
+            features=tf.train.Features(
+                feature={
+                    key: tf.train.Feature(
+                        bytes_list=tf.train.BytesList(value=[string_example[key]])
+                    )
+                    for key in string_example.keys()
+                }
+            )
+        )
+        return train_example.SerializeToString()
 
     def calculate_normalization_matrix(self, data_folders, selected_markers):
         """Calculates the normalization matrix for the given data if it does not exist
@@ -299,7 +423,8 @@ class SegmentationTFRecords:
         """
         # iterate through the data_folders and calculate the quantiles
         quantiles = {}
-        for data_folder in data_folders:
+        print("Calculating normalization quantiles...")
+        for data_folder in tqdm(data_folders):
             for marker in selected_markers:
                 img = self.get_image(data_folder, marker)
                 if marker not in quantiles:
@@ -320,3 +445,39 @@ class SegmentationTFRecords:
             json.dump(normalization_matrix, f)
         self.normalization_dict = normalization_matrix
         return normalization_matrix
+
+
+feature_description = {
+    "mplex_img": tf.io.RaggedFeature(tf.string),
+    "binary_mask": tf.io.RaggedFeature(tf.string),
+    "instance_mask": tf.io.RaggedFeature(tf.string),
+    "imaging_platform": tf.io.RaggedFeature(tf.string),
+    "marker_activity_mask": tf.io.RaggedFeature(tf.string),
+    "dataset": tf.io.RaggedFeature(tf.string),
+    "marker": tf.io.RaggedFeature(tf.string),
+    "activity_df": tf.io.RaggedFeature(tf.string),
+    "folder_name": tf.io.RaggedFeature(tf.string),
+}
+
+
+def parse_dict(deserialized_dict):
+    """Parse an example into a dictionary of tensors
+
+    Args:
+        deserialized_dict: a deserialized dictionary
+    Returns:
+        a dictionary of tensors and metadata strings
+    """
+    example = {}
+    for key in ["dataset", "marker", "imaging_platform", "folder_name"]:
+        example[key] = deserialized_dict[key][0].numpy().decode()
+    for key in ["activity_df"]:
+        example[key] = pd.read_json(deserialized_dict[key][0].numpy().decode())
+    for key in ["binary_mask", "marker_activity_mask"]:
+        example[key] = tf.io.decode_png(deserialized_dict[key][0])
+    for key in ["mplex_img", "instance_mask"]:
+        example[key] = tf.io.decode_png(deserialized_dict[key][0], dtype=tf.uint16)
+    example["mplex_img"] = tf.cast(example["mplex_img"], tf.float32) / tf.constant(
+        np.iinfo(np.uint16).max, dtype=tf.float32
+    )
+    return example
