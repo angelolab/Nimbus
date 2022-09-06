@@ -428,6 +428,12 @@ def test_tile_example(tile_size):
         np.array([1, 2, 5], dtype=np.uint16)
     )
 
+    # check if channel gets added to images without channels
+    example["instance_mask"] = np.squeeze(example["instance_mask"], axis=-1)
+    tiled_examples = data_prep.tile_example(example)
+    assert tiled_examples[0]["instance_mask"].ndim == 3
+    assert tiled_examples[1]["instance_mask"].ndim == 3
+
 
 def test_prepare_example():
     data_prep = prep_object()
