@@ -10,6 +10,7 @@ from tqdm import tqdm
 import json
 from ark.utils.misc_utils import verify_in_list
 from ark.utils.io_utils import list_folders, validate_paths
+import copy
 
 
 class SegmentationTFRecords:
@@ -189,7 +190,7 @@ class SegmentationTFRecords:
             "marker_activity_mask": marker_activity_mask.astype(np.uint8),
             "dataset": self.dataset,
             "marker": marker,
-            "marker_activity": marker_activity,
+            "activity_df": marker_activity,
             "folder_name": fov,
         }
 
@@ -209,10 +210,22 @@ class SegmentationTFRecords:
                 List of example dicts, one for each tile
         """
         # tile the example
+        example = copy.deepcopy(example)
         tiled_examples = {}
         for key in spatial_keys:
             if example[key].ndim == 2:
                 example[key] = np.expand_dims(example[key], axis=-1)
+
+            # pad images if they are not divisible by the tile size
+            if not example[key].shape[0] % self.tile_size[0] == 0 or \
+                    not example[key].shape[1] % self.tile_size[1] == 0:
+                example[key] = np.pad(
+                    example[key],
+                    ((0, example[key].shape[0] % self.tile_size[0]),
+                     (0, example[key].shape[1] % self.tile_size[1]),
+                     (0, 0)),
+                    mode="constant",
+                )
             res = np.lib.stride_tricks.sliding_window_view(
                 example[key], window_shape=self.tile_size + list(example[key].shape[2:])
             )[:: self.stride[0], :: self.stride[1]]
@@ -221,7 +234,7 @@ class SegmentationTFRecords:
 
         # store individual tiled examples in a list of dicts
         non_spatial_keys = [
-            key for key in example if key not in spatial_keys + ["marker_activity"]
+            key for key in example if key not in spatial_keys + ["activity_df"]
         ]
         num_tiles = tiled_examples[spatial_keys[0]].shape[0]
         example_list = []
@@ -234,8 +247,8 @@ class SegmentationTFRecords:
 
             # subset marker_activity to the labels that are present in the tile
             label_subset = np.unique(example_out["instance_mask"]).astype(np.uint16).tolist()
-            example_out["marker_activity"] = example["marker_activity"].loc[
-                [True if i in label_subset else False for i in example["marker_activity"].labels]
+            example_out["activity_df"] = example["activity_df"].loc[
+                [True if i in label_subset else False for i in example["activity_df"].labels]
             ]
             example_list.append(example_out)
 
@@ -357,6 +370,7 @@ class SegmentationTFRecords:
                     example_serialized = self.serialize_example(example)
                     self.writer.write(example_serialized)
         self.writer.close()
+        delattr(self, "writer")
 
     def serialize_example(self, example):
         """Serializes an example dict to a tfrecord example
@@ -441,7 +455,7 @@ feature_description = {
     "marker_activity_mask": tf.io.RaggedFeature(tf.string),
     "dataset": tf.io.RaggedFeature(tf.string),
     "marker": tf.io.RaggedFeature(tf.string),
-    "marker_activity": tf.io.RaggedFeature(tf.string),
+    "activity_df": tf.io.RaggedFeature(tf.string),
     "folder_name": tf.io.RaggedFeature(tf.string),
 }
 
@@ -457,7 +471,7 @@ def parse_dict(deserialized_dict):
     example = {}
     for key in ["dataset", "marker", "imaging_platform", "folder_name"]:
         example[key] = deserialized_dict[key][0].numpy().decode()
-    for key in ["marker_activity"]:
+    for key in ["activity_df"]:
         example[key] = pd.read_json(deserialized_dict[key][0].numpy().decode())
     for key in ["binary_mask", "marker_activity_mask"]:
         example[key] = tf.io.decode_png(deserialized_dict[key][0])
