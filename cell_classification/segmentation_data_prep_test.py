@@ -138,7 +138,7 @@ def test_calculate_normalization_matrix():
 
         # check if the normalization_dict has the correct values for stochastic images
         for marker, std in zip(norm_dict.keys(), scale):
-            assert np.isclose(norm_dict[marker], 1 / (std * 0.99), rtol=1e-3)
+            assert np.isclose(norm_dict[marker], std * 0.99, rtol=1e-3)
 
         # check if the normalization_dict is correctly written to the json file
         norm_dict_loaded = json.load(open(os.path.join(temp_dir, "norm_dict_test.json")))
@@ -277,7 +277,7 @@ def test_load_and_check_input():
         cell_table_path_tmp = os.path.join(temp_dir, "cell_type_table_wrong_sample.csv")
         cell_table.to_csv(cell_table_path_tmp, index=False)
         data_prep.cell_table_path = cell_table_path_tmp
-        with pytest.raises(ValueError, match="list sample names were found in list data folder."):
+        with pytest.warns(UserWarning):
             data_prep.load_and_check_input()
 
 
@@ -449,7 +449,7 @@ def test_prepare_example():
         )
 
         # check correct normalization of mplex_img
-        assert example["mplex_img"].max() <= 1.0
+        assert np.isclose(np.quantile(example["mplex_img"], 0.99), 1.0, rtol=1e-2)
         assert example["mplex_img"].min() >= 0.0
 
         # check if all images are 3 dimensional
@@ -479,7 +479,7 @@ def test_serialize_example():
         for key in ["binary_mask", "marker_activity_mask", "instance_mask"]:
             assert np.array_equal(example[key], parsed_example[key].numpy())
         # check if mplex_img (float32) is correctly reconstructed from uint16 png
-        assert np.allclose(example["mplex_img"], parsed_example["mplex_img"].numpy(), atol=1e-4)
+        assert np.allclose(example["mplex_img"], parsed_example["mplex_img"].numpy(), atol=1e-3)
 
 
 def test_make_tf_record():
@@ -517,7 +517,7 @@ def test_make_tf_record():
         for key in ["binary_mask", "marker_activity_mask", "instance_mask"]:
             assert np.array_equal(example[key], parsed_dict[key].numpy())
         # check if mplex_img (float32) is correctly reconstructed from uint16 png
-        assert np.allclose(example["mplex_img"], parsed_dict["mplex_img"].numpy(), atol=1e-4)
+        assert np.allclose(example["mplex_img"], parsed_dict["mplex_img"].numpy(), atol=1e-3)
 
         # remove tiled-tfrecord and check if everything works with tile_size = None
         os.remove(tf_record_path)

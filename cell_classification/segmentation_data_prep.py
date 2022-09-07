@@ -335,10 +335,11 @@ class SegmentationTFRecords:
             raise ValueError("The sample_key is not in the cell_type_table")
 
         # check if sample_names in cell_type_table match sample_names in data_folder
-        # verify_in_list(
-        #     sample_names=self.cell_type_table[self.sample_key].values,
-        #     data_folders=list_folders(self.data_dir),
-        # )
+        verify_in_list(
+            sample_names=self.cell_type_table[self.sample_key].values,
+            data_folders=list_folders(self.data_dir),
+            warn=True
+        )
 
     def make_tf_record(self):
         """Iterates through the data_folders and loads, transforms and
@@ -391,8 +392,7 @@ class SegmentationTFRecords:
             if type(example[key]) in [np.ndarray, tf.Tensor]:
                 # convert float32 into uint16 for compression and storage
                 if example[key].dtype not in [np.uint8, np.uint16]:
-                    
-                    example[key] = example[key].clip(0,20) * (np.iinfo(np.uint16).max/20)
+                    example[key] = example[key].clip(0, 20) * (np.iinfo(np.uint16).max/20)
                     example[key] = example[key].astype(np.uint16)
                 # convert to bytes
                 string_example[key] = tf.io.encode_png(example[key]).numpy()
