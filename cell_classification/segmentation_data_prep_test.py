@@ -95,8 +95,10 @@ def prepare_test_data_folders(num_folders, temp_dir, selected_markers, random=Fa
                 img,
             )
         imwrite(
-            os.path.join(folder, "cell_segmentation.tiff"),
-            np.random.randint(0, 255, size=(256, 256)),
+            os.path.join(
+                folder, "cell_segmentation.tiff"), np.array(
+                    [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11], [12, 13, 14, 15]]
+                ).repeat(64, axis=1).repeat(64, axis=0)
         )
     return data_folders
 

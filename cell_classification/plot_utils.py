@@ -1,3 +1,4 @@
+from ast import arg
 import os
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -120,11 +121,14 @@ if __name__ == "__main__":
     )
     parser.add_argument("--dpi", type=float, default=160)
     parser.add_argument("--plot_overlay", default=True)
+    parser.add_argument("--shuffle", default=True)
     args = parser.parse_args()
     path = args.record_path
     save_dir = args.save_dir
     dpi = args.dpi
     train_ds = tf.data.TFRecordDataset(path)
+    if args.shuffle:
+        train_ds = train_ds.shuffle(300)
     for i, record in tqdm(enumerate(train_ds)):
         example_encoded = tf.io.parse_single_example(record, feature_description)
         example = parse_dict(example_encoded)
@@ -132,11 +136,11 @@ if __name__ == "__main__":
             example,
             dpi=dpi,
             save_dir=save_dir,
-            save_file=f"{example['folder_name']}_overlay_{i}.png",
+            save_file=f"{example['folder_name']}_{example['marker']}_overlay_{i}.png",
         )
         plot_together(
             example,
             dpi=dpi,
             save_dir=save_dir,
-            save_file=f"{example['folder_name']}_together_{i}.png",
+            save_file=f"{example['folder_name']}_{example['marker']}_together_{i}.png",
         )
