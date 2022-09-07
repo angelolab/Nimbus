@@ -19,7 +19,7 @@ class SegmentationTFRecords:
     def __init__(
         self, data_dir, cell_table_path, conversion_matrix_path, imaging_platform, dataset,
         tile_size, stride, tf_record_path, selected_markers=None, normalization_dict_path=None,
-        normalization_quantile=0.99, cell_type_key="cluster_labels", sample_key="SampleID",
+        normalization_quantile=0.999, cell_type_key="cluster_labels", sample_key="SampleID",
         segmentation_fname="cell_segmentation", segment_label_key="labels",
     ):
         """Initializes SegmentationTFRecords and loads everything except the images
@@ -87,6 +87,7 @@ class SegmentationTFRecords:
                 The multiplexed image
         """
         img = imread(os.path.join(data_folder, marker + ".tiff"))
+        img = np.squeeze(img)
         if img.ndim == 2:
             img = np.expand_dims(img, axis=-1)
         return img
@@ -106,6 +107,7 @@ class SegmentationTFRecords:
                 The instance mask
         """
         instance_mask = imread(os.path.join(data_folder, self.segmentation_fname + ".tiff"))
+        instance_mask = np.squeeze(instance_mask)
         if instance_mask.ndim == 2:
             instance_mask = np.expand_dims(instance_mask, axis=-1)
         edge = find_boundaries(instance_mask, mode="inner").astype(np.uint8)
@@ -126,7 +128,7 @@ class SegmentationTFRecords:
                 The marker activity for the given labels, 1 if the marker is active, 0
                 otherwise and -1 if the marker is not specific enough to be considered active
         """
-        sample_subset = self.cell_type_table[self.cell_type_table.SampleID == sample_name]
+        sample_subset = self.cell_type_table[self.cell_type_table[self.sample_key] == sample_name]
         cell_types = sample_subset[self.cell_type_key].values
 
         df = pd.DataFrame(
@@ -173,8 +175,9 @@ class SegmentationTFRecords:
                 Example dict
         """
         # load and normalize the multiplexed image and masks
-        mplex_img = self.get_image(data_folder, marker)
+        mplex_img = self.get_image(data_folder, marker).astype(np.float32)
         mplex_img /= self.normalization_dict[marker]
+        mplex_img = mplex_img.clip(0, 1)
         binary_mask, instance_mask = self.get_inst_binary_masks(data_folder)
         fov = os.path.split(data_folder)[-1]
         # get the cell types and marker activity mask
@@ -336,7 +339,13 @@ class SegmentationTFRecords:
         verify_in_list(
             sample_names=self.cell_type_table[self.sample_key].values,
             data_folders=list_folders(self.data_dir),
+            warn=True
         )
+
+        # make cell_types lowercase to make matching easier
+        self.conversion_matrix.index = self.conversion_matrix.index.str.lower()
+        self.cell_type_table[self.cell_type_key] = self.cell_type_table[self.cell_type_key] \
+            .str.lower()
 
     def make_tf_record(self):
         """Iterates through the data_folders and loads, transforms and
@@ -389,7 +398,7 @@ class SegmentationTFRecords:
             if type(example[key]) in [np.ndarray, tf.Tensor]:
                 # convert float32 into uint16 for compression and storage
                 if example[key].dtype not in [np.uint8, np.uint16]:
-                    example[key] = example[key] * np.iinfo(np.uint16).max
+                    example[key] = example[key] * (np.iinfo(np.uint16).max)
                     example[key] = example[key].astype(np.uint16)
                 # convert to bytes
                 string_example[key] = tf.io.encode_png(example[key]).numpy()
@@ -434,7 +443,7 @@ class SegmentationTFRecords:
         # calculate the normalization matrix
         normalization_matrix = {}
         for marker in selected_markers:
-            normalization_matrix[marker] = 1.0 / np.mean(quantiles[marker])
+            normalization_matrix[marker] = np.mean(quantiles[marker])
 
         # check path and save the normalization matrix
         if not str(self.normalization_dict_path).endswith(".json"):
@@ -478,6 +487,6 @@ def parse_dict(deserialized_dict):
     for key in ["mplex_img", "instance_mask"]:
         example[key] = tf.io.decode_png(deserialized_dict[key][0], dtype=tf.uint16)
     example["mplex_img"] = tf.cast(example["mplex_img"], tf.float32) / tf.constant(
-        np.iinfo(np.uint16).max, dtype=tf.float32
+        (np.iinfo(np.uint16).max), dtype=tf.float32
     )
     return example
