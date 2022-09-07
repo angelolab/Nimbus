@@ -13,7 +13,7 @@ import tensorflow as tf
 def prep_object(
     data_dir="path", cell_table_path="path", conversion_matrix_path="path",
     normalization_dict_path="path", tf_record_path="path", tile_size=[256, 256], stride=[256, 256],
-    normalization_quantile=0.99, selected_markers=None,
+    normalization_quantile=0.999, selected_markers=None,
 ):
     data_prep = SegmentationTFRecords(
         data_dir=data_dir, cell_table_path=cell_table_path,
@@ -140,7 +140,7 @@ def test_calculate_normalization_matrix():
 
         # check if the normalization_dict has the correct values for stochastic images
         for marker, std in zip(norm_dict.keys(), scale):
-            assert np.isclose(norm_dict[marker], std * 0.99, rtol=1e-3)
+            assert np.isclose(norm_dict[marker], std * 0.999, rtol=1e-3)
 
         # check if the normalization_dict is correctly written to the json file
         norm_dict_loaded = json.load(open(os.path.join(temp_dir, "norm_dict_test.json")))
@@ -453,7 +453,7 @@ def test_prepare_example():
         )
 
         # check correct normalization of mplex_img
-        assert np.isclose(np.quantile(example["mplex_img"], 0.99), 1.0, rtol=1e-2)
+        assert np.isclose(np.quantile(example["mplex_img"], 0.999), 1.0, rtol=1e-2)
         assert example["mplex_img"].min() >= 0.0
 
         # check if all images are 3 dimensional

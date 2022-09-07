@@ -19,7 +19,7 @@ class SegmentationTFRecords:
     def __init__(
         self, data_dir, cell_table_path, conversion_matrix_path, imaging_platform, dataset,
         tile_size, stride, tf_record_path, selected_markers=None, normalization_dict_path=None,
-        normalization_quantile=0.99, cell_type_key="cluster_labels", sample_key="SampleID",
+        normalization_quantile=0.999, cell_type_key="cluster_labels", sample_key="SampleID",
         segmentation_fname="cell_segmentation", segment_label_key="labels",
     ):
         """Initializes SegmentationTFRecords and loads everything except the images
@@ -177,6 +177,7 @@ class SegmentationTFRecords:
         # load and normalize the multiplexed image and masks
         mplex_img = self.get_image(data_folder, marker).astype(np.float32)
         mplex_img /= self.normalization_dict[marker]
+        mplex_img = mplex_img.clip(0, 1)
         binary_mask, instance_mask = self.get_inst_binary_masks(data_folder)
         fov = os.path.split(data_folder)[-1]
         # get the cell types and marker activity mask
@@ -397,7 +398,7 @@ class SegmentationTFRecords:
             if type(example[key]) in [np.ndarray, tf.Tensor]:
                 # convert float32 into uint16 for compression and storage
                 if example[key].dtype not in [np.uint8, np.uint16]:
-                    example[key] = example[key].clip(0, 20) * (np.iinfo(np.uint16).max/20)
+                    example[key] = example[key] * (np.iinfo(np.uint16).max)
                     example[key] = example[key].astype(np.uint16)
                 # convert to bytes
                 string_example[key] = tf.io.encode_png(example[key]).numpy()
@@ -486,6 +487,6 @@ def parse_dict(deserialized_dict):
     for key in ["mplex_img", "instance_mask"]:
         example[key] = tf.io.decode_png(deserialized_dict[key][0], dtype=tf.uint16)
     example["mplex_img"] = tf.cast(example["mplex_img"], tf.float32) / tf.constant(
-        (np.iinfo(np.uint16).max/20), dtype=tf.float32
+        (np.iinfo(np.uint16).max), dtype=tf.float32
     )
     return example
