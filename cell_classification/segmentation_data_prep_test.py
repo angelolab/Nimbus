@@ -246,9 +246,11 @@ def test_load_and_check_input():
         # CELL TYPE TABLE
         # check if cell_type_table is loaded correctly in check_input
         # when cell_type_table_path is given to init
+        conversion_matrix.to_csv(conversion_matrix_path, index=True)
         data_prep = copy.deepcopy(data_prep_working)
         data_prep.cell_type_table_path = cell_table_path
         data_prep.load_and_check_input()
+        cell_table["cluster_labels"] = cell_table["cluster_labels"].str.lower()
         assert np.array_equal(cell_table, data_prep.cell_type_table)
 
         # check if ValueError is raised when cell_type_key not in cell_type_table

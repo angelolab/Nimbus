@@ -128,7 +128,7 @@ class SegmentationTFRecords:
                 The marker activity for the given labels, 1 if the marker is active, 0
                 otherwise and -1 if the marker is not specific enough to be considered active
         """
-        sample_subset = self.cell_type_table[self.cell_type_table.SampleID == sample_name]
+        sample_subset = self.cell_type_table[self.cell_type_table[self.sample_key] == sample_name]
         cell_types = sample_subset[self.cell_type_key].values
 
         df = pd.DataFrame(
@@ -340,6 +340,11 @@ class SegmentationTFRecords:
             data_folders=list_folders(self.data_dir),
             warn=True
         )
+
+        # make cell_types lowercase to make matching easier
+        self.conversion_matrix.index = self.conversion_matrix.index.str.lower()
+        self.cell_type_table[self.cell_type_key] = self.cell_type_table[self.cell_type_key] \
+            .str.lower()
 
     def make_tf_record(self):
         """Iterates through the data_folders and loads, transforms and
