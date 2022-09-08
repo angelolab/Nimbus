@@ -19,3 +19,6 @@ gaussian_blur_max = 0.15
 contrast_prob = 0.5
 contrast_min = 0.8
 contrast_max = 1.2
+raw_keys = ["mplex_img"]
+label_keys = ["binary_mask", "marker_activity_mask"]
+batch_size = 4
