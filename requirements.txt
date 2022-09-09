@@ -7,3 +7,5 @@ tifffile>=2019.0.0
 tqdm>=4.64.0,<5
 imgaug>=0.4.0
 ark-analysis @ git+https://github.com/angelolab/ark-analysis.git@v0.3.2
+deepcell
+toml
