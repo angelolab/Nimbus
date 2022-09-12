@@ -3,7 +3,7 @@ import os
 import argparse
 import tensorflow as tf
 import toml
-from augmentation_pipeline import prepapre_tf_aug, py_aug, get_augmentation_pipeline
+from augmentation_pipeline import prepare_tf_aug, py_aug, get_augmentation_pipeline
 from segmentation_data_prep import parse_dict, feature_description
 from deepcell.model_zoo.panopticnet import PanopticNet
 from tensorflow.keras.optimizers import SGD, Adam
@@ -38,7 +38,7 @@ class Trainer:
             self.params["batch_size"]
         )
         augmentation_pipeline = get_augmentation_pipeline(self.params)
-        tf_aug = prepapre_tf_aug(augmentation_pipeline)
+        tf_aug = prepare_tf_aug(augmentation_pipeline)
         self.train_dataset = self.train_dataset.map(lambda x: py_aug(x, tf_aug))
         self.train_dataset = self.train_dataset.map(self.prep_batches)
         self.validation_dataset = self.validation_dataset.batch(self.params["batch_size"])

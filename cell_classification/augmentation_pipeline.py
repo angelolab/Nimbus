@@ -93,7 +93,7 @@ def get_augmentation_pipeline(params):
     return augmentation_pipeline
 
 
-def prepapre_tf_aug(augmentation_pipeline):
+def prepare_tf_aug(augmentation_pipeline):
     def tf_aug(mplex_img, binary_mask, marker_activity_mask):
         """ Boiler plate code necessary to apply augmentations onto tf.data.Dataset objects
         Args:
