@@ -3,6 +3,7 @@ path = "C:/Users/lorenz/OneDrive/Desktop/angelo_lab/"
 experiment = "test"
 num_epochs = 10
 lr = 1e-3
+backbone = "resnet50"
 input_shape = [256,256,2]
 num_validation = 500
 shuffle_buffer_size = 2000
@@ -27,3 +28,5 @@ contrast_max = 1.2
 raw_keys = ["mplex_img"]
 label_keys = ["binary_mask", "marker_activity_mask"]
 batch_size = 4
+[classes]
+marker_positive = 1

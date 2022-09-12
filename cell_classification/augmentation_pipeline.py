@@ -107,9 +107,9 @@ def prepapre_tf_aug(augmentation_pipeline):
             function:
                 The augmentation function applicable on the input images and masks
         """
-        aug_images, aug_masks = augment_images(mplex_img.numpy(), 
-            np.concatenate([binary_mask, marker_activity_mask], -1)
-            , augmentation_pipeline
+        aug_images, aug_masks = augment_images(
+            mplex_img.numpy(), np.concatenate([binary_mask, marker_activity_mask], -1),
+            augmentation_pipeline
         )
         mplex_img = aug_images
         binary_mask = aug_masks[..., :1]
@@ -129,7 +129,10 @@ def py_aug(batch, tf_aug):
         dict:
             The augmented batch
     """
-    mplex_img, binary_mask, marker_activity_mask = tf.py_function(tf_aug, [batch['mplex_img'], batch['binary_mask'], batch['marker_activity_mask']], [tf.float32, tf.uint8, tf.uint8])
+    mplex_img, binary_mask, marker_activity_mask = tf.py_function(
+        tf_aug, [batch['mplex_img'], batch['binary_mask'], batch['marker_activity_mask']],
+        [tf.float32, tf.uint8, tf.uint8]
+    )
     batch['mplex_img'] = mplex_img
     batch['binary_mask'] = binary_mask
     batch['marker_activity_mask'] = marker_activity_mask

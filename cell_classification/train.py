@@ -1,3 +1,4 @@
+from cProfile import label
 import os
 import argparse
 import tensorflow as tf
@@ -8,113 +9,141 @@ from deepcell.model_zoo.panopticnet import PanopticNet
 from tensorflow.keras.optimizers import SGD, Adam
 from deepcell.utils.train_utils import rate_scheduler, get_callbacks, count_gpus
 from deepcell import losses
+from semantic_head import create_semantic_head
 
 
-def semantic_loss(n_classes):
-    def _semantic_loss(y_true, y_pred):
-        return losses.weighted_categorical_crossentropy(
-            y_true, y_pred, n_classes=n_classes)
-    return _semantic_loss
+class Trainer:
+    """Builds, trains and writes validation metrics for models"""
 
-def prep_batches(batch):
-    """ Preprocess batches for training
-    Args:
-        batch (dict):
-            Dictionary of numpy arrays
-    Returns:
-        inputs (tf.Tensor):
-            Batch of images
-        targets (tf.Tensor):
-            Batch of labels
-    """
-    inputs = tf.concat([batch["mplex_img"], tf.cast(batch["binary_mask"], tf.float32)], axis=-1)
-    targets = batch["marker_activity_mask"]
-    return inputs, targets
-    
+    def __init__(self, params):
+        """Initialize the trainer with the parameters from the config file
+        Args:
+            params (dict): Dictionary of parameters from the config file
+        """
+        self.params = params
 
+    def prep_data(self):
+        """Prepares training and validation data"""
+        # make datasets and splits
+        dataset = tf.data.TFRecordDataset(self.params["record_path"])
+        dataset = dataset.map(lambda x: tf.io.parse_single_example(x, feature_description))
+        dataset = dataset.map(parse_dict)
 
-tf.executing_eagerly()
+        # split into train and validation
+        self.validation_dataset = dataset.take(self.params["num_validation"])
+        self.train_dataset = dataset.skip(self.params["num_validation"])
 
+        # shuffle, batch and augment the training data
+        self.train_dataset = self.train_dataset.shuffle(self.params["shuffle_buffer_size"]).batch(
+            self.params["batch_size"]
+        )
+        augmentation_pipeline = get_augmentation_pipeline(self.params)
+        tf_aug = prepapre_tf_aug(augmentation_pipeline)
+        self.train_dataset = self.train_dataset.map(lambda x: py_aug(x, tf_aug))
+        self.train_dataset = self.train_dataset.map(self.prep_batches)
+        self.validation_dataset = self.validation_dataset.batch(self.params["batch_size"])
+        self.validation_dataset = self.validation_dataset.map(self.prep_batches)
 
-def train(params):    
+    def prep_model(self):
+        """Prepares the model for training"""
+        self.optimizer = Adam(learning_rate=self.params["lr"], clipnorm=0.001)
+        self.lr_sched = rate_scheduler(lr=self.params["lr"], decay=0.99)
 
-    # make datasets and splits
-    dataset = tf.data.TFRecordDataset(params["record_path"])
-    dataset = dataset.map(lambda x: tf.io.parse_single_example(x, feature_description))
-    dataset = dataset.map(parse_dict)
+        if "test" in self.params.keys() and self.params["test"]:
+            self.model = tf.keras.Sequential(
+                [tf.keras.layers.Conv2D(
+                    1, (3, 3), input_shape=self.params["input_shape"], name="semantic_head",
+                    activation="sigmoid", padding="same", data_format="channels_last"
+                )]
+            )
+        else:
+            self.model = PanopticNet(
+                backbone=self.params["backbone"], input_shape=self.params["input_shape"],
+                norm_method="std", num_semantic_classes=self.params["classes"],
+                create_semantic_head=create_semantic_head
+            )
 
-    # split into train and validation
-    validation_dataset = dataset.take(params["num_validation"])
-    train_dataset = dataset.skip(params["num_validation"])
-    
-    # shuffle, batch and augment the training data
-    train_dataset = train_dataset.shuffle(params["shuffle_buffer_size"]).batch(
-        params["batch_size"])
-    augmentation_pipeline = get_augmentation_pipeline(params)
-    tf_aug = prepapre_tf_aug(augmentation_pipeline)
-    train_dataset = train_dataset.map(lambda x: py_aug(x, tf_aug))
-    train_dataset = train_dataset.map(prep_batches)
-    validation_dataset = validation_dataset.batch(params["batch_size"])
-    validation_dataset = validation_dataset.map(prep_batches)
-    
-    
-    classes = {
-    'marker_positive': 2,
-    }
-    params["experiment"]
-    params["num_epochs"]
-    
-    optimizer = Adam(learning_rate=params["lr"], clipnorm=0.001)
-    lr_sched = rate_scheduler(lr=params["lr"], decay=0.99)
+        loss = {}
+        # Give losses for all of the semantic heads
+        for layer in self.model.layers:
+            if layer.name.startswith("semantic_"):
+                n_classes = layer.output_shape[-1]
+                loss[layer.name] = self.prep_loss(n_classes)
 
-    model = PanopticNet(
-        backbone='resnet50',
-        input_shape=params["input_shape"],
-        norm_method='std',
-        num_semantic_classes=classes)
-    
-    loss = {}
-    # Give losses for all of the semantic heads
-    for layer in model.layers:
-        if layer.name.startswith('semantic_'):
-            n_classes = layer.output_shape[-1]
-            loss[layer.name] = semantic_loss(n_classes)
-    
-    model.compile(loss=loss, optimizer=optimizer)
-    # prepare folders
-    model_dir = os.path.join(os.path.normpath(params["path"]), params["experiment"])
-    log_dir = os.path.join(model_dir, 'logs')
-    os.makedirs(model_dir, exist_ok=True)
-    os.makedirs(log_dir, exist_ok=True)
-    model_path = os.path.join(model_dir, '{}.h5'.format(params["experiment"]))
-    loss_path = os.path.join(model_dir, '{}.npz'.format(params["experiment"]))
+        self.model.compile(loss=loss, optimizer=self.optimizer)
+        # prepare folders
+        self.model_dir = os.path.join(
+            os.path.normpath(self.params["path"]), self.params["experiment"]
+        )
+        self.log_dir = os.path.join(self.model_dir, "logs")
+        os.makedirs(self.model_dir, exist_ok=True)
+        os.makedirs(self.log_dir, exist_ok=True)
+        self.model_path = os.path.join(self.model_dir, "{}.h5".format(self.params["experiment"]))
+        self.loss_path = os.path.join(self.model_dir, "{}.npz".format(self.params["experiment"]))
 
-    num_gpus = count_gpus()
-    print('Training on', num_gpus, 'GPUs.')
+        self.num_gpus = count_gpus()
+        print("Training on", self.num_gpus, "GPUs.")
 
-    train_callbacks = get_callbacks(
-        model_path,
-        lr_sched=lr_sched,
-        tensorboard_log_dir=log_dir,
-        save_weights_only=num_gpus >= 2,
-        monitor='val_loss',
-        verbose=1)
+        self.train_callbacks = get_callbacks(
+            self.model_path,
+            lr_sched=self.lr_sched,
+            tensorboard_log_dir=self.log_dir,
+            save_weights_only=self.num_gpus >= 2,
+            monitor="val_loss",
+            verbose=1,
+        )
 
-    loss_history = model.fit(
-        train_dataset,
-        epochs=params["num_epochs"],
-        validation_data=validation_dataset,
-        callbacks=train_callbacks)
+    def train(self):
+        """Calls prep functions and starts training loops"""
+        self.prep_data()
+        self.prep_model()
+        self.loss_history = self.model.fit(
+            self.train_dataset,
+            epochs=self.params["num_epochs"],
+            validation_data=self.validation_dataset,
+            callbacks=self.train_callbacks,
+        )
 
+    def prep_loss(self, n_classes):
+        """Prepares the loss function for the model
+        Args:
+            n_classes (int): Number of semantic classes in the dataset
+        Returns:
+            loss_fn (function): Loss function for the model
+        """
+        if n_classes == 1:
+            def loss_fn(y_true, y_pred):
+                return tf.keras.losses.binary_crossentropy(y_true, y_pred, from_logits=False)
+        elif n_classes > 1:
+            def loss_fn(y_true, y_pred):
+                return tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=False)
+        return loss_fn
+
+    @staticmethod
+    def prep_batches(batch):
+        """Preprocess batches for training
+        Args:
+            batch (dict):
+                Dictionary of tensors and strings containing data from a single batch
+        Returns:
+            inputs (tf.Tensor):
+                Batch of images
+            targets (tf.Tensor):
+                Batch of labels
+        """
+        inputs = tf.concat(
+            [batch["mplex_img"], tf.cast(batch["binary_mask"], tf.float32)], axis=-1
+        )
+        targets = batch["marker_activity_mask"]
+        return inputs, targets
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--params",
-        type=str,
-        default="cell_classification/configs/params.toml",
+        "--params", type=str, default="cell_classification/configs/params.toml",
     )
     args = parser.parse_args()
     params = toml.load(args.params)
-    train(params)
+    trainer = Trainer(params)
+    trainer.train()
