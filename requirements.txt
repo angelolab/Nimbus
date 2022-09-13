@@ -1,11 +1,11 @@
 numpy>=1.22,<2
 tensorflow>2.0.0
 keras>=2.4.3
-scikit-image>=0.14.3,<=0.16.2
+scikit-image==0.16.2
 xarray>=0.17.0,<1
 tifffile>=2019.0.0
 tqdm>=4.64.0,<5
 imgaug>=0.4.0
 ark-analysis @ git+https://github.com/angelolab/ark-analysis.git@v0.3.2
-deepcell
-toml
+deepcell>=0.12.3
+toml>=0.10.2
