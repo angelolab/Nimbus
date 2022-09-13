@@ -1,5 +1,5 @@
 deepcell
-tifffile>=2019.0.0
-tqdm>=4.64.0,<5
-imgaug>=0.4.0
-toml>=0.10.2
+tifffile
+tqdm
+imgaug
+toml
