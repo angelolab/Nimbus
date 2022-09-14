@@ -35,7 +35,7 @@ class Trainer:
         # split into train and validation
         self.validation_dataset = dataset.take(self.params["num_validation"])
         self.train_dataset = dataset.skip(self.params["num_validation"])
-        
+
         # shuffle, batch and augment the training data
         self.train_dataset = self.train_dataset.shuffle(self.params["shuffle_buffer_size"]).batch(
             self.params["batch_size"]
@@ -152,7 +152,6 @@ class Trainer:
 
 
 if __name__ == "__main__":
-    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--params", type=str, default="cell_classification/configs/params.toml",
