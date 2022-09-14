@@ -26,23 +26,36 @@ class Trainer:
         """Prepares training and validation data"""
         # make datasets and splits
         dataset = tf.data.TFRecordDataset(self.params["record_path"])
-        dataset = dataset.map(lambda x: tf.io.parse_single_example(x, feature_description))
-        dataset = dataset.map(parse_dict)
+        dataset = dataset.map(
+            lambda x: tf.io.parse_single_example(x, feature_description),
+            num_parallel_calls=tf.data.AUTOTUNE
+        )
+        dataset = dataset.map(parse_dict, num_parallel_calls=tf.data.AUTOTUNE)
 
         # split into train and validation
         self.validation_dataset = dataset.take(self.params["num_validation"])
         self.train_dataset = dataset.skip(self.params["num_validation"])
-
+        
         # shuffle, batch and augment the training data
         self.train_dataset = self.train_dataset.shuffle(self.params["shuffle_buffer_size"]).batch(
             self.params["batch_size"]
         )
         augmentation_pipeline = get_augmentation_pipeline(self.params)
         tf_aug = prepare_tf_aug(augmentation_pipeline)
-        self.train_dataset = self.train_dataset.map(lambda x: py_aug(x, tf_aug))
-        self.train_dataset = self.train_dataset.map(self.prep_batches)
+        self.train_dataset = self.train_dataset.map(
+            lambda x: py_aug(x, tf_aug),
+            num_parallel_calls=tf.data.AUTOTUNE
+        )
+        self.train_dataset = self.train_dataset.map(
+            self.prep_batches,
+            num_parallel_calls=tf.data.AUTOTUNE
+        )
+        self.train_dataset = self.train_dataset.prefetch(tf.data.AUTOTUNE)
         self.validation_dataset = self.validation_dataset.batch(self.params["batch_size"])
-        self.validation_dataset = self.validation_dataset.map(self.prep_batches)
+        self.validation_dataset = self.validation_dataset.map(
+            self.prep_batches,
+            num_parallel_calls=tf.data.AUTOTUNE
+        )
 
     def prep_model(self):
         """Prepares the model for training"""
@@ -134,11 +147,12 @@ class Trainer:
         inputs = tf.concat(
             [batch["mplex_img"], tf.cast(batch["binary_mask"], tf.float32)], axis=-1
         )
-        targets = batch["marker_activity_mask"]
+        targets = tf.clip_by_value(batch["marker_activity_mask"], 0, 1)
         return inputs, targets
 
 
 if __name__ == "__main__":
+    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--params", type=str, default="cell_classification/configs/params.toml",
