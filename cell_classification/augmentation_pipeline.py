@@ -3,6 +3,7 @@ import imgaug.augmenters as iaa
 from imgaug.augmentables.segmaps import SegmentationMapsOnImage
 from imgaug.augmentables.batches import Batch
 import numpy as np
+import tensorflow as tf
 
 
 def augment_images(images, masks, augmentation_pipeline):
@@ -12,7 +13,7 @@ def augment_images(images, masks, augmentation_pipeline):
         images (np.array):
             The images (b,h,w,c) to augment
         masks (np.array):
-            The masks (b,h,w,1) to augment
+            The masks (b,h,w,c) to augment
         augmentation_pipeline (imgaug.augmenters.meta.Augmenter):
             The augmentation pipeline
     Returns:
@@ -90,3 +91,49 @@ def get_augmentation_pipeline(params):
         ]
     )
     return augmentation_pipeline
+
+
+def prepare_tf_aug(augmentation_pipeline):
+    def tf_aug(mplex_img, binary_mask, marker_activity_mask):
+        """ Boiler plate code necessary to apply augmentations onto tf.data.Dataset objects
+        Args:
+            mplex_img (tf.Tensor):
+                The images (b,h,w,c) to augment
+            binary_mask (tf.Tensor):
+                The masks (b,h,w,c) to augment
+            marker_activity_mask (tf.Tensor):
+                The masks (b,h,w,c) to augment
+        Returns:
+            function:
+                The augmentation function applicable on the input images and masks
+        """
+        aug_images, aug_masks = augment_images(
+            mplex_img.numpy(), np.concatenate([binary_mask, marker_activity_mask], -1),
+            augmentation_pipeline
+        )
+        mplex_img = aug_images
+        binary_mask = aug_masks[..., :1]
+        marker_activity_mask = aug_masks[..., 1:]
+        return mplex_img, binary_mask, marker_activity_mask
+    return tf_aug
+
+
+def py_aug(batch, tf_aug):
+    """ Python function wrapper to apply augmentations onto tf.data.Dataset objects
+    Args:
+        batch (dict):
+            The batch to augment
+        tf_aug (function):
+            The augmentation function
+    Returns:
+        dict:
+            The augmented batch
+    """
+    mplex_img, binary_mask, marker_activity_mask = tf.py_function(
+        tf_aug, [batch['mplex_img'], batch['binary_mask'], batch['marker_activity_mask']],
+        [tf.float32, tf.uint8, tf.uint8]
+    )
+    batch['mplex_img'] = mplex_img
+    batch['binary_mask'] = binary_mask
+    batch['marker_activity_mask'] = marker_activity_mask
+    return batch

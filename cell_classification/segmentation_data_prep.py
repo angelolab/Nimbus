@@ -5,11 +5,9 @@ import tensorflow as tf
 import numpy as np
 import pandas as pd
 import os
-import xarray
 from tqdm import tqdm
 import json
-from ark.utils.misc_utils import verify_in_list
-from ark.utils.io_utils import list_folders, validate_paths
+from utils import verify_in_list, list_folders, validate_paths
 import copy
 
 
@@ -401,18 +399,28 @@ class SegmentationTFRecords:
                     example[key] = example[key] * (np.iinfo(np.uint16).max)
                     example[key] = example[key].astype(np.uint16)
                 # convert to bytes
-                string_example[key] = tf.io.encode_png(example[key]).numpy()
+                string_example[key] = tf.train.Feature(
+                    bytes_list=tf.train.BytesList(
+                        value=[tf.io.encode_png(example[key]).numpy()]
+                    )
+                )
             elif type(example[key]) in [pd.DataFrame, pd.Series]:
-                string_example[key] = example[key].to_json().encode()
+                string_example[key] = tf.train.Feature(
+                    int64_list=tf.train.Int64List(
+                        value=tf.strings.unicode_decode(example[key].to_json(), "UTF-8")
+                    )
+                )
             elif type(example[key]) == str:
-                string_example[key] = example[key].encode()
+                string_example[key] = tf.train.Feature(
+                    int64_list=tf.train.Int64List(
+                        value=tf.strings.unicode_decode(example[key], "UTF-8")
+                    )
+                )
         #
         train_example = tf.train.Example(
             features=tf.train.Features(
                 feature={
-                    key: tf.train.Feature(
-                        bytes_list=tf.train.BytesList(value=[string_example[key]])
-                    )
+                    key: string_example[key]
                     for key in string_example.keys()
                 }
             )
@@ -460,12 +468,12 @@ feature_description = {
     "mplex_img": tf.io.RaggedFeature(tf.string),
     "binary_mask": tf.io.RaggedFeature(tf.string),
     "instance_mask": tf.io.RaggedFeature(tf.string),
-    "imaging_platform": tf.io.RaggedFeature(tf.string),
+    "imaging_platform": tf.io.RaggedFeature(tf.int64),
     "marker_activity_mask": tf.io.RaggedFeature(tf.string),
-    "dataset": tf.io.RaggedFeature(tf.string),
-    "marker": tf.io.RaggedFeature(tf.string),
-    "activity_df": tf.io.RaggedFeature(tf.string),
-    "folder_name": tf.io.RaggedFeature(tf.string),
+    "dataset": tf.io.RaggedFeature(tf.int64),
+    "marker": tf.io.RaggedFeature(tf.int64),
+    "activity_df": tf.io.RaggedFeature(tf.int64),
+    "folder_name": tf.io.RaggedFeature(tf.int64),
 }
 
 
@@ -478,15 +486,19 @@ def parse_dict(deserialized_dict):
         a dictionary of tensors and metadata strings
     """
     example = {}
-    for key in ["dataset", "marker", "imaging_platform", "folder_name"]:
-        example[key] = deserialized_dict[key][0].numpy().decode()
-    for key in ["activity_df"]:
-        example[key] = pd.read_json(deserialized_dict[key][0].numpy().decode())
+    for key in ["dataset", "marker", "imaging_platform", "folder_name", "activity_df"]:
+        example[key] = tf.strings.unicode_encode(
+            tf.cast(deserialized_dict[key], tf.int32), "UTF-8"
+        )
+        if hasattr(example[key], "numpy"):
+            example[key] = example[key].numpy().decode()
     for key in ["binary_mask", "marker_activity_mask"]:
-        example[key] = tf.io.decode_png(deserialized_dict[key][0])
+        example[key] = tf.io.decode_png(deserialized_dict[key][0], dtype=tf.uint8)
     for key in ["mplex_img", "instance_mask"]:
         example[key] = tf.io.decode_png(deserialized_dict[key][0], dtype=tf.uint16)
     example["mplex_img"] = tf.cast(example["mplex_img"], tf.float32) / tf.constant(
         (np.iinfo(np.uint16).max), dtype=tf.float32
     )
+    if type(example["activity_df"]) == str:
+        example["activity_df"] = pd.read_json(example["activity_df"])
     return example
