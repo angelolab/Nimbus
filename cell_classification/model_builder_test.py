@@ -50,24 +50,43 @@ def test_prep_data():
         assert len(next(iter(trainer.train_dataset))) == 2
         assert len(next(iter(trainer.validation_dataset))) == 2
 
+        # check if in eval mode validation samples contain all original example keys
+        trainer.params["eval"] = True
+        trainer.prep_data()
+        val_dset = iter(trainer.validation_dataset)
+        val_batch = next(val_dset)
+        assert set(val_batch.keys()) == set(
+            [
+                "mplex_img", "binary_mask", "instance_mask", "folder_name", "marker", "dataset",
+                "imaging_platform", "marker_activity_mask", "activity_df",
+            ]
+        )
+
 
 def test_prep_model():
-    params = toml.load("cell_classification/configs/params.toml")
-    trainer = ModelBuilder(params)
-    trainer.prep_model()
+    with tempfile.TemporaryDirectory() as temp_dir:
+        params = toml.load("cell_classification/configs/params.toml")
+        params["path"] = temp_dir
+        trainer = ModelBuilder(params)
+        trainer.prep_model()
 
-    # check if right objects are instantiated
-    assert isinstance(trainer.model, tf.keras.Model)
-    assert isinstance(trainer.optimizer, tf.keras.optimizers.Optimizer)
+        # check if right objects are instantiated
+        assert isinstance(trainer.model, tf.keras.Model)
+        assert isinstance(trainer.optimizer, tf.keras.optimizers.Optimizer)
 
-    # check if all the directories were created
-    assert os.path.exists(trainer.params['log_dir'])
-    assert os.path.exists(trainer.params['model_dir'])
+        # check if all the directories were created
+        assert os.path.exists(trainer.params['log_dir'])
+        assert os.path.exists(trainer.params['model_dir'])
 
-    # check if callbacks were created
-    assert isinstance(trainer.train_callbacks[0], tf.keras.callbacks.ModelCheckpoint)
-    assert isinstance(trainer.train_callbacks[1], tf.keras.callbacks.LearningRateScheduler)
-    assert isinstance(trainer.train_callbacks[2], tf.keras.callbacks.TensorBoard)
+        # check if callbacks were created
+        assert isinstance(trainer.train_callbacks[0], tf.keras.callbacks.ModelCheckpoint)
+        assert isinstance(trainer.train_callbacks[1], tf.keras.callbacks.LearningRateScheduler)
+        assert isinstance(trainer.train_callbacks[2], tf.keras.callbacks.TensorBoard)
+
+        # check if model path is taken from params.toml if it exists
+        trainer.params["model_path"] = os.path.join(temp_dir, "test_dir", "test.h5")
+        trainer.prep_model()
+        assert trainer.params["model_path"] == os.path.join(temp_dir, "test_dir", "test.h5")
 
 
 def test_train():

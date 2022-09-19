@@ -52,10 +52,11 @@ class ModelBuilder:
         )
         self.train_dataset = self.train_dataset.prefetch(tf.data.AUTOTUNE)
         self.validation_dataset = self.validation_dataset.batch(self.params["batch_size"])
-        self.validation_dataset = self.validation_dataset.map(
-            self.prep_batches,
-            num_parallel_calls=tf.data.AUTOTUNE
-        )
+        if "eval" not in self.params.keys() or not self.params["eval"]:
+            self.validation_dataset = self.validation_dataset.map(
+                self.prep_batches,
+                num_parallel_calls=tf.data.AUTOTUNE
+            )
 
     def prep_model(self):
         """Prepares the model for training"""
@@ -91,9 +92,10 @@ class ModelBuilder:
         self.params['log_dir'] = os.path.join(self.params['model_dir'], "logs")
         os.makedirs(self.params['model_dir'], exist_ok=True)
         os.makedirs(self.params['log_dir'], exist_ok=True)
-        self.params['model_path'] = os.path.join(
-            self.params['model_dir'], "{}.h5".format(self.params["experiment"])
-        )
+        if "model_path" not in self.params.keys() or self.params["model_path"] is None:
+            self.params['model_path'] = os.path.join(
+                self.params['model_dir'], "{}.h5".format(self.params["experiment"])
+            )
         self.params['loss_path'] = os.path.join(
             self.params['model_dir'], "{}.npz".format(self.params["experiment"])
         )
@@ -173,9 +175,11 @@ class ModelBuilder:
         """Loads a model from a path
         Args:
             path (str):
-                Path to the model
+                Path to the model checkpoint file
         """
-        self.model = tf.keras.models.load_model(path, {"loss_fn": self.prep_loss(1)})
+        if not hasattr(self, "model") or self.model is None:
+            self.prep_model()
+        self.model.load_weights(path)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,5 @@
-from segmentation_data_prep import SegmentationTFRecords
 import os
+from segmentation_data_prep import SegmentationTFRecords
 
 os.listdir()
 data_prep = SegmentationTFRecords(
