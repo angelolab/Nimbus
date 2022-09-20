@@ -11,6 +11,7 @@ import toml
 from copy import deepcopy
 from joblib import Parallel, delayed
 import pandas as pd
+import h5py
 
 
 def load_model_and_val_data(params):
@@ -32,7 +33,7 @@ def load_model_and_val_data(params):
     return model, val_dset
 
 
-def predict(model, val_dset, params):
+def predict(model, val_dset, params, return_pred=False):
     """Predict labels for validation data
     Args:
         model (ModelBuilder):
@@ -40,40 +41,50 @@ def predict(model, val_dset, params):
         val_dset (tf.data.Dataset):
             validation data
         params (dict):
-            dictionary containing model and validation data paths
+            dictionary containing model and validation data
+        return_pred (bool):
+            whether to return predictions
     Returns:
-        predictions (list):
+        predictions (list) optional:
             list of dictionaries containing the full example + prediction
         params (dict):
             dictionary containing model hyperparams and validation data paths
     """
-    pred_list = []
+    # prepare output folder
+    params["eval_dir"] = os.path.join(model.params["model_dir"], "eval")
+    os.makedirs(params["eval_dir"], exist_ok=True)
+
+    single_example_list = []
+    j = 0
     for sample in tqdm(val_dset):
         sample["prediction"] = model.predict(model.prep_batches(sample)[0])
-        pred_list.append(sample)
 
-    # split batches to single samples
-    single_example_list = []
-    for sample in pred_list:
+        # split batches to single samples
+        # split numpy arrays to list of arrays
         for key in sample.keys():
             sample[key] = np.split(sample[key], sample[key].shape[0])
+        # iterate over samples in batch
         for i in range(len(sample["prediction"])):
             single_example = {}
             for key in sample.keys():
                 single_example[key] = np.squeeze(sample[key][i], axis=0)
                 if single_example[key].dtype == object:
                     single_example[key] = sample[key][i].item().decode("utf-8")
-            single_example_list.append(single_example)
-    # save pred_list to pickle file
-    params["eval_dir"] = os.path.join(model.params["model_dir"], "eval")
-    os.makedirs(params["eval_dir"], exist_ok=True)
-    with open(os.path.join(params["eval_dir"], "pred_list.pkl"), "wb") as f:
-        pickle.dump(single_example_list, f)
-
+            # save single example
+            fname = os.path.join(params['eval_dir'], str(j).zfill(4)+'_pred.hdf')
+            j += 1
+            with h5py.File(fname, "w") as f:
+                for key in single_example.keys():
+                    f.create_dataset(key, data=single_example[key])
+            if return_pred:
+                single_example_list.append(single_example)
     # save params to toml file
     with open(os.path.join(params["model_dir"], "params.toml"), "w") as f:
         toml.dump(params, f)
-    return single_example_list, params
+    if return_pred:
+        return single_example_list, params
+    else:
+        return params
 
 
 def calc_roc(pred_list, gt_key="marker_activity_mask", pred_key="prediction"):
@@ -126,7 +137,7 @@ def calc_metrics(pred_list, gt_key="marker_activity_mask", pred_key="prediction"
     }
 
     def _calc_metrics(threshold):
-        """Calculate metrics for a given threshold"""
+        """Helper function to calculate metrics for a given threshold in parallel"""
         metrics = deepcopy(metrics_dict)
         for sample in pred_list:
             if sample[gt_key].max() == 0:
@@ -148,17 +159,20 @@ def calc_metrics(pred_list, gt_key="marker_activity_mask", pred_key="prediction"
             metrics[key] = sample[key]
         return metrics
 
+    # calculate metrics for all thresholds in parallel
     thresholds = np.linspace(0, 1, 101)
     metric_list = Parallel(n_jobs=8)(delayed(_calc_metrics)(i) for i in thresholds)
+
+    # reduce metrics over all samples for each threshold
     avg_metrics = deepcopy(metrics_dict)
     for key in ["dataset", "imaging_platform", "marker", "threshold"]:
         avg_metrics[key] = []
     for metrics in metric_list:
-        for key in ["accuracy", "precision", "recall", "f1_score"]:
+        for key in ["accuracy", "precision", "recall", "f1_score"]:  # averade metrics
             avg_metrics[key].append(np.mean(metrics[key]))
-        for key in ["tp", "tn", "fp", "fn"]:
+        for key in ["tp", "tn", "fp", "fn"]:  # sum fn, fp, tn, tp
             avg_metrics[key].append(np.sum(metrics[key]))
-        for key in ["dataset", "imaging_platform", "marker", "threshold"]:
+        for key in ["dataset", "imaging_platform", "marker", "threshold"]:  # copy strings
             avg_metrics[key].append(metrics[key])
     return avg_metrics
 
@@ -193,6 +207,54 @@ def average_roc(roc_list):
     mean_tprs = tprs.mean(axis=0)
     std = tprs.std(axis=0)
     return tprs, mean_tprs, base, std, mean_thresh
+
+
+class HDF5Loader(object):
+    """HDF5 iterator for loading data from HDF5 files"""
+
+    def __init__(self, folder):
+        """Initialize HDF5 generator
+        Args:
+            folder (str):
+                path to folder containing HDF5 files
+        """
+        self.folder = folder
+        self.files = os.listdir(folder)
+        # filter out hdf files
+        self.files = [os.path.join(folder, f) for f in self.files if f.endswith(".hdf")]
+        self.file_idx = 0
+
+    def __len__(self):
+        return len(self.files)
+
+    def load_hdf(self, file):
+        """Load HDF5 file
+        Args:
+            file (str):
+                path to HDF5 file
+        Returns:
+            data (dict):
+                dictionary containing data from HDF5 file
+        """
+        out_dict = {}
+        with h5py.File(file, "r") as f:
+            for key in f.keys():
+                if isinstance(f[key][()], bytes):
+                    out_dict[key] = f[key][()].decode("utf-8")
+                else:
+                    out_dict[key] = f[key][()]
+        return out_dict
+
+    def __iter__(self):
+        self.file_idx = 0
+        return self
+
+    def __next__(self):
+        if self.file_idx >= len(self.files):
+            raise StopIteration
+        else:
+            self.file_idx += 1
+            return self.load_hdf(self.files[self.file_idx-1])
 
 
 if __name__ == "__main__":

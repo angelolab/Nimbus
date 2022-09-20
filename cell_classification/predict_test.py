@@ -3,8 +3,9 @@ from model_builder import ModelBuilder
 import tempfile
 import toml
 import os
-from predict import predict, calc_roc, calc_metrics, average_roc
+from predict import predict, calc_roc, calc_metrics, average_roc, HDF5Loader
 import numpy as np
+import h5py
 
 
 def test_predict():
@@ -17,23 +18,32 @@ def test_predict():
         params["record_path"] = tf_record_path
         params["path"] = temp_dir
         params["experiment"] = "test"
-        params["num_epochs"] = 2
+        params["num_epochs"] = 0
         params["num_validation"] = 2
         model = ModelBuilder(params)
         model.train()
         model.params["eval"] = True
         model.prep_data()
         val_dset = iter(model.validation_dataset)
-        single_example_list, params = predict(model, val_dset, params)
+        single_example_list, params = predict(model, val_dset, params, True)
 
         # check if predict returns a list with the right number of items
         assert len(single_example_list) == params["num_validation"]
 
-        # check if predictions were pickled
-        assert "pred_list.pkl" in os.listdir(params["eval_dir"])
-
         # check if params were saved to file
         assert "params.toml" in os.listdir(params["model_dir"])
+
+        # check if examples get serialized correctly
+        for i in range(params["num_validation"]):
+            assert str(i).zfill(4)+'_pred.hdf' in list(os.listdir(params['eval_dir']))
+
+        with h5py.File(os.path.join(params['eval_dir'], str(0).zfill(4)+'_pred.hdf'), 'r') as f:
+            assert f['prediction'].shape == (256, 256, 1)
+            assert f['marker_activity_mask'].shape == (256, 256, 1)
+            assert set(list(f.keys())) == set(list(single_example_list[0].keys()))
+
+        params = predict(model, val_dset, params)
+        assert isinstance(params, dict)
 
 
 def make_pred_list():
@@ -94,3 +104,32 @@ def test_average_roc():
     # check if mean and std give reasonable results
     assert np.array_equal(np.mean(tprs, axis=0), mean_tprs)
     assert np.array_equal(np.std(tprs, axis=0), std)
+
+
+def test_HDF5Generator():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
+        data_prep.tf_record_path = temp_dir
+        data_prep.make_tf_record()
+        tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
+        params = toml.load("cell_classification/configs/params.toml")
+        params["record_path"] = tf_record_path
+        params["path"] = temp_dir
+        params["experiment"] = "test"
+        params["num_epochs"] = 0
+        params["num_validation"] = 2
+        model = ModelBuilder(params)
+        model.train()
+        model.params["eval"] = True
+        model.prep_data()
+        val_dset = iter(model.validation_dataset)
+        single_example_list, params = predict(model, val_dset, params, True)
+        generator = HDF5Loader(params['eval_dir'])
+
+        # check if generator has the right number of items
+        assert len(generator) == params['num_validation']
+
+        # check if generator returns the right items
+        for sample in generator:
+            assert isinstance(sample, dict)
+            assert set(list(sample.keys())) == set(list(single_example_list[0].keys()))
