@@ -6,6 +6,7 @@ import os
 from predict import predict, calc_roc, calc_metrics, average_roc, HDF5Loader
 import numpy as np
 import h5py
+import pandas as pd
 
 
 def test_predict():
@@ -49,10 +50,14 @@ def test_predict():
 def make_pred_list():
     pred_list = []
     for _ in range(10):
+        instance_mask = np.random.randint(0, 10, size=(256, 256, 1))
+        binary_mask = (instance_mask > 0).astype(np.uint8)
         pred_list.append(
             {
-                "marker_activity_mask": np.random.randint(0, 2, (256, 256, 1)),
+                "marker_activity_mask": np.random.randint(0, 2, (256, 256, 1))*binary_mask,
                 "prediction": np.random.rand(256, 256, 1),
+                "instance_mask": instance_mask,
+                "binary_mask": binary_mask,
                 "dataset": "test", "imaging_platform": "test", "marker": "test",
             }
         )
@@ -89,7 +94,7 @@ def test_calc_metrics():
         == len(avg_metrics["tp"]) == len(avg_metrics["tn"])
         == len(avg_metrics["fp"]) == len(avg_metrics["fn"])
         == len(avg_metrics["dataset"]) == len(avg_metrics["imaging_platform"])
-        == len(avg_metrics["marker"]) == len(avg_metrics["threshold"]) == 101
+        == len(avg_metrics["marker"]) == len(avg_metrics["threshold"]) == 50
     )
 
 
