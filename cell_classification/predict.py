@@ -43,7 +43,11 @@ def process_to_cells(sample):
         sample (dict):
             single sample with predictions at cell level
     """
-    df = pd.read_json(sample["activity_df"])
+    if not isinstance(sample["activity_df"], pd.DataFrame):
+        if isinstance(sample["activity_df"], str):
+            df = pd.read_json(sample["activity_df"])
+        else:
+            df = pd.read_hdf(sample["activity_df"])
     df["pred_activity"] = 0.0
     unique_labels = np.unique(sample["instance_mask"])
     unique_labels = unique_labels[unique_labels != 0]

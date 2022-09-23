@@ -114,7 +114,6 @@ def prepare_cell_type_table():
             ["CD4", "CD14", "CD163", "CD163"] * 8,
         }
     )
-
     return cell_type_table
 
 
