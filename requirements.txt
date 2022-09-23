@@ -11,4 +11,4 @@ tqdm==4.64.1
 imgaug==0.4.0
 opencv-python==4.6.0.66
 toml
-pytables==3.7.0
+pytables
