@@ -13,3 +13,4 @@ opencv-python==4.6.0.66
 toml
 tables==3.7.0
 packaging==21.3
+h5py==3.7.0

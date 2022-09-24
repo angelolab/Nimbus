@@ -1,3 +1,4 @@
+import h5py
 from model_builder_test import prep_object_and_inputs
 from model_builder import ModelBuilder
 import tempfile
@@ -5,7 +6,6 @@ import toml
 import os
 from predict import predict, calc_roc, calc_metrics, average_roc, HDF5Loader, process_to_cells
 import numpy as np
-import h5py
 import pandas as pd
 
 

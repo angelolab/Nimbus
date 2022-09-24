@@ -1,3 +1,4 @@
+import h5py
 import toml
 import argparse
 import pickle
@@ -11,7 +12,6 @@ import toml
 from copy import deepcopy
 from joblib import Parallel, delayed
 import pandas as pd
-import h5py
 import tables
 
 
