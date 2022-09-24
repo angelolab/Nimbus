@@ -55,7 +55,7 @@ def process_to_cells(sample):
     for unique_label in unique_labels:
         mask = sample["instance_mask"] == unique_label
         mean_pred = sample["prediction"][mask].mean()
-        df.at[df.index[df["labels"] == unique_label][0], "pred_activity"] = mean_pred
+        df.at[df.index[df["labels"] == unique_label].to_list().pop(), "pred_activity"] = mean_pred
         mean_per_cell_mask[mask] = mean_pred
     sample["activity_df"] = df
     sample["prediction_mean"] = mean_per_cell_mask
