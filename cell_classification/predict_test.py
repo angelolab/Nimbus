@@ -11,6 +11,7 @@ import pandas as pd
 
 def test_predict():
     with tempfile.TemporaryDirectory() as temp_dir:
+        # Generate a model and run predict
         data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
         data_prep.tf_record_path = temp_dir
         data_prep.make_tf_record()
