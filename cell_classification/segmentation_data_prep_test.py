@@ -108,10 +108,11 @@ def prepare_cell_type_table():
     # prepare cell_table
     cell_type_table = pd.DataFrame(
         {
-            "SampleID": ["fov_0"] * 16 + ["fov_1"] * 16 + ["fov_2"] * 16 + ["fov_3"] * 16,
-            "labels": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16] * 4,
-            "cluster_labels": ["stromal", "FAP", "NK", "NK"] * 8 +
-            ["CD4", "CD14", "CD163", "CD163"] * 8,
+            "SampleID": ["fov_0"] * 15 + ["fov_1"] * 15 + ["fov_2"] * 15 + ["fov_3"] * 15 +
+            ["fov_4"] * 15 + ["fov_5"] * 15,
+            "labels": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] * 6,
+            "cluster_labels": ["stromal", "FAP", "NK", "NK", "NK"] * 3 * 3 +
+            ["CD4", "CD14", "CD163", "CD163", "CD163"] * 3 * 3,
         }
     )
     return cell_type_table
