@@ -6,6 +6,7 @@ from segmentation_data_prep_test import prep_object_and_inputs
 import os
 import toml
 from model_builder import ModelBuilder
+import h5py
 
 
 def test_prep_loss():
@@ -43,8 +44,12 @@ def test_prep_data():
         trainer.prep_data()
 
         # check if correct number of samples per batch is returned
+        trainer.validation_dataset = trainer.validation_dataset.map(
+                trainer.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
+        )
         assert next(iter(trainer.train_dataset))[0].shape[0] == params["batch_size"]
-        assert next(iter(trainer.validation_dataset))[0].shape[0] == params["batch_size"]
+        assert next(iter(trainer.validation_dataset))[0].shape[0] == \
+            params["batch_size"]
 
         # check if samples only contains two files (inputs, targets)
         assert len(next(iter(trainer.train_dataset))) == 2
@@ -154,8 +159,10 @@ def test_predict():
         params["test"] = True
         trainer = ModelBuilder(params)
         trainer.train()
-        val_dset = iter(trainer.validation_dataset)
-        val_batch = next(val_dset)
+        val_dset = trainer.validation_dataset.map(
+            trainer.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
+        )
+        val_batch = next(iter(val_dset))
         predictions = trainer.predict(val_batch[0])
 
         # check if predictions have the right shape, format and range
@@ -167,3 +174,39 @@ def test_predict():
         # check if predictions work for a single image
         predictions = trainer.predict(val_batch[0][0])
         assert predictions.shape == (1, 256, 256, 1)
+
+
+def test_predict_dataset():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
+        data_prep.tf_record_path = temp_dir
+        data_prep.make_tf_record()
+        tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
+        params = toml.load("cell_classification/configs/params.toml")
+        params["record_path"] = tf_record_path
+        params["path"] = temp_dir
+        params["experiment"] = "test"
+        params["num_epochs"] = 2
+        params["num_validation"] = 2
+        params["batch_size"] = 2
+        trainer = ModelBuilder(params)
+        trainer.train()
+        val_dset = trainer.validation_dataset
+        single_example_list = trainer.predict_dataset(val_dset)
+
+        # check if predict returns a list with the right number of items
+        assert len(single_example_list) == params["num_validation"]
+
+        # check if params were saved to file
+        assert "params.toml" in os.listdir(params["model_dir"])
+
+        # check if examples get serialized correctly
+        single_example_list = trainer.predict_dataset(val_dset, save_predictions=True)
+        params = trainer.params
+        for i in range(params["num_validation"]):
+            assert str(i).zfill(4)+'_pred.hdf' in list(os.listdir(params['eval_dir']))
+
+        with h5py.File(os.path.join(params['eval_dir'], str(0).zfill(4)+'_pred.hdf'), 'r') as f:
+            assert f['prediction'].shape == (256, 256, 1)
+            assert f['marker_activity_mask'].shape == (256, 256, 1)
+            assert set(list(f.keys())) == set(list(single_example_list[0].keys()))

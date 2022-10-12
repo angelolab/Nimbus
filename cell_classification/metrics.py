@@ -34,90 +34,6 @@ def load_model_and_val_data(params):
     return model, val_dset
 
 
-def process_to_cells(sample):
-    """Process predictions from pixel level to cell level
-    Args:
-        sample (dict):
-            single sample with predictions
-    Returns:
-        sample (dict):
-            single sample with predictions at cell level
-    """
-    if not isinstance(sample["activity_df"], pd.DataFrame):
-        if isinstance(sample["activity_df"], str):
-            df = pd.read_json(sample["activity_df"])
-        else:
-            df = pd.read_hdf(sample["activity_df"])
-    df["pred_activity"] = 0.0
-    unique_labels = np.unique(sample["instance_mask"])
-    unique_labels = unique_labels[unique_labels != 0]
-    mean_per_cell_mask = np.zeros_like(sample["instance_mask"], dtype=np.float32)
-    for unique_label in unique_labels:
-        mask = sample["instance_mask"] == unique_label
-        mean_pred = sample["prediction"][mask].mean()
-        df.at[df.index[df["labels"] == unique_label].to_list().pop(), "pred_activity"] = mean_pred
-        mean_per_cell_mask[mask] = mean_pred
-    sample["activity_df"] = df
-    sample["prediction_mean"] = mean_per_cell_mask
-    return sample
-
-
-def predict(model, val_dset, params, return_pred=False):
-    """Predict labels for validation data
-    Args:
-        model (ModelBuilder):
-            trained model
-        val_dset (tf.data.Dataset):
-            validation data
-        params (dict):
-            dictionary containing model and validation data
-        return_pred (bool):
-            whether to return predictions
-    Returns:
-        predictions (list) optional:
-            list of dictionaries containing the full example + prediction
-        params (dict):
-            dictionary containing model hyperparams and validation data paths
-    """
-    # prepare output folder
-    params["eval_dir"] = os.path.join(model.params["model_dir"], "eval")
-    os.makedirs(params["eval_dir"], exist_ok=True)
-
-    single_example_list = []
-    j = 0
-    for sample in tqdm(val_dset):
-        sample["prediction"] = model.predict(model.prep_batches(sample)[0])
-
-        # split batches to single samples
-        # split numpy arrays to list of arrays
-        for key in sample.keys():
-            sample[key] = np.split(sample[key], sample[key].shape[0])
-        # iterate over samples in batch
-        for i in range(len(sample["prediction"])):
-            single_example = {}
-            for key in sample.keys():
-                single_example[key] = np.squeeze(sample[key][i], axis=0)
-                if single_example[key].dtype == object:
-                    single_example[key] = sample[key][i].item().decode("utf-8")
-            # save single example
-            single_example = process_to_cells(single_example)
-            fname = os.path.join(params["eval_dir"], str(j).zfill(4) + "_pred.hdf")
-            j += 1
-            with h5py.File(fname, "w") as f:
-                for key in [key for key in single_example.keys() if key != "activity_df"]:
-                    f.create_dataset(key, data=single_example[key])
-            single_example["activity_df"].to_hdf(fname, key="activity_df", mode="a")
-            if return_pred:
-                single_example_list.append(single_example)
-    # save params to toml file
-    with open(os.path.join(params["model_dir"], "params.toml"), "w") as f:
-        toml.dump(params, f)
-    if return_pred:
-        return single_example_list, params
-    else:
-        return params
-
-
 def calc_roc(pred_list, gt_key="marker_activity_mask", pred_key="prediction", cell_level=False):
     """Calculate ROC curve
     Args:
@@ -291,7 +207,7 @@ class HDF5Loader(object):
                     out_dict[key] = f[key][()].decode("utf-8")
                 else:
                     out_dict[key] = f[key][()]
-        out_dict["activity_df"] = pd.read_hdf(file, key="activity_df", mode="r")
+            out_dict["activity_df"] = pd.read_json(f["activity_df"][()].decode())
         return out_dict
 
     def __iter__(self):
@@ -327,7 +243,7 @@ if __name__ == "__main__":
         params = toml.load(f)
     params["model_path"] = args.model_path
     model, val_dset = load_model_and_val_data(params)
-    pred_list, params = predict(model, val_dset, params, True)
+    pred_list, params = model.predict(val_dset, True)
 
     # pixel level evaluation
     print("Calculate ROC curve")

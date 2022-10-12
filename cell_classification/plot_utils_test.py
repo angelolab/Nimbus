@@ -5,8 +5,8 @@ import pytest
 import tempfile
 from plot_utils import plot_overlay, plot_together, plot_average_roc
 from plot_utils import plot_metrics_against_threshold
-from predict_test import make_pred_list
-from predict import calc_roc, average_roc, calc_metrics
+from metrics_test import make_pred_list
+from metrics import calc_roc, average_roc, calc_metrics
 import os
 import tensorflow as tf
 
