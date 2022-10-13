@@ -20,11 +20,17 @@ def process_to_cells(instance_mask, prediction):
     unique_labels = unique_labels[unique_labels != 0]
     mean_per_cell_mask = np.zeros_like(instance_mask, dtype=np.float32)
     df = pd.DataFrame(columns=['labels', 'pred_activity'])
+    i = 0
     for unique_label in unique_labels:
         mask = instance_mask == unique_label
         mean_pred = prediction[mask].mean()
         mean_per_cell_mask[mask] = mean_pred
-        df = df.append({'labels': unique_label, 'pred_activity': mean_pred}, ignore_index=True)
+        df = pd.concat(
+            [df, pd.DataFrame(
+                {'labels': [unique_label], 'pred_activity': [mean_pred]}, index=[i]
+            )],
+        )
+        i += 1
     return mean_per_cell_mask, df
 
 
@@ -39,5 +45,7 @@ def merge_activity_df(gt_df, pred_df):
         pd.DataFrame:
             DataFrame of merged ground truth and prediction
     """
+    pred_df.labels = pred_df.labels.astype(int)
+    gt_df.labels = gt_df.labels.astype(int)
     df = gt_df.merge(pred_df, on='labels', how='left')
     return df

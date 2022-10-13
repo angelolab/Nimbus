@@ -30,7 +30,7 @@ def load_model_and_val_data(params):
     model = ModelBuilder(params)
     model.prep_data()
     model.load_model(params["model_path"])
-    val_dset = iter(model.validation_dataset)
+    val_dset = model.validation_dataset
     return model, val_dset
 
 
@@ -243,7 +243,8 @@ if __name__ == "__main__":
         params = toml.load(f)
     params["model_path"] = args.model_path
     model, val_dset = load_model_and_val_data(params)
-    pred_list, params = model.predict(val_dset, True)
+    params["eval_dir"] = os.path.join(params["model_dir"], "eval")
+    pred_list = model.predict_dataset(val_dset, True)
 
     # pixel level evaluation
     print("Calculate ROC curve")
