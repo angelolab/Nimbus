@@ -108,12 +108,13 @@ def prepare_cell_type_table():
     # prepare cell_table
     cell_type_table = pd.DataFrame(
         {
-            "SampleID": ["fov_1"] * 6 + ["fov_2"] * 6,
-            "labels": [1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6],
-            "cluster_labels": ["stromal", "FAP", "NK"] * 2 + ["CD4", "CD14", "CD163"] * 2,
+            "SampleID": ["fov_0"] * 15 + ["fov_1"] * 15 + ["fov_2"] * 15 + ["fov_3"] * 15 +
+            ["fov_4"] * 15 + ["fov_5"] * 15,
+            "labels": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15] * 6,
+            "cluster_labels": ["stromal", "FAP", "NK", "NK", "NK"] * 3 * 3 +
+            ["CD4", "CD14", "CD163", "CD163", "CD163"] * 3 * 3,
         }
     )
-
     return cell_type_table
 
 
@@ -332,8 +333,8 @@ def test_get_marker_activity():
     # check if the df has the right marker activity values for a given cell
     for i in range(len(fov_1_subset.labels)):
         assert (
-            marker_activity.activity[i]
-            == conversion_matrix.loc[fov_1_subset.cluster_labels[i], "CD4"]
+            marker_activity.activity.values[i]
+            == conversion_matrix.loc[fov_1_subset.cluster_labels.values[i], "CD4"]
         )
 
 

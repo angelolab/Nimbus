@@ -77,6 +77,19 @@ def plot_overlay(example, save_dir=None, save_file=None, dpi=160):
 
 
 def plot_together(example, save_dir=None, save_file=None, dpi=160):
+    """
+    Plot the marker image, the marker activity segmentation and the instance segmentation overlayed
+    Args:
+        example (dict):
+            Dictionary with keys "mplex_img", "marker_activity_mask", "instance_mask"
+        dpi (float):
+            The resolution of the image to save, ignored if save_dir is None
+        save_dir (str):
+            If specified, a directory where we will save the plot
+        save_file (str):
+            If save_dir specified, specify a file name you wish to save to.
+            Ignored if save_dir is None
+    """
     colors = [(0, 0, 0), (0, 1, 0), (0, 0, 1), (1, 0, 0)]
     cmap = LinearSegmentedColormap.from_list("BRGB", colors, N=4)
     fig, ax = plt.subplots(1, 3)
@@ -101,6 +114,72 @@ def plot_together(example, save_dir=None, save_file=None, dpi=160):
         fancybox=True,
         ncol=3,
     )
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        plt.savefig(os.path.join(save_dir, save_file), dpi=dpi)
+    else:
+        plt.show()
+    plt.close()
+
+
+def plot_average_roc(avg_tpr, stddev, save_dir=None, save_file=None, dpi=160):
+    """Plot the average ROC curve with the standard deviation
+    Args:
+        avg_tpr (np.ndarray):
+            The average true positive rate
+        stddev (np.ndarray):
+            The standard deviation of the true positive rate
+        dpi (float):
+            The resolution of the image to save, ignored if save_dir is None
+        save_dir (str):
+            If specified, a directory where we will save the plot
+        save_file (str):
+            If save_dir specified, specify a file name you wish to save to.
+            Ignored if save_dir is None
+    """
+    base_fpr = np.linspace(0, 1, avg_tpr.shape[0])
+    tprs_upper = np.minimum(avg_tpr + stddev, 1)
+    tprs_lower = avg_tpr - stddev
+
+    plt.plot(base_fpr, avg_tpr, "b")
+    plt.fill_between(base_fpr, tprs_lower, tprs_upper, color="grey", alpha=0.3)
+    plt.plot([0, 1], [0, 1], "r--")
+    plt.xlim([-0.01, 1.01])
+    plt.ylim([-0.01, 1.01])
+    plt.ylabel("True Positive Rate")
+    plt.xlabel("False Positive Rate")
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        plt.savefig(os.path.join(save_dir, save_file), dpi=dpi)
+    else:
+        plt.show()
+    plt.close()
+
+
+def plot_metrics_against_threshold(
+    metric_dict, metric_keys, threshold_key, save_dir=None, save_file=None, dpi=160
+):
+    """Plot the metrics against the threshold
+    Args:
+        metric_dict (dict):
+            A dictionary storing metrics for different thresholds
+        metric_keys (list):
+            A list of keys in metric_dict that are metrics you want to plot
+        threshold_key (str):
+            The key in metric_dict that is the threshold
+        dpi (float):
+            The resolution of the image to save, ignored if save_dir is None
+        save_dir (str):
+            If specified, a directory where we will save the plot
+        save_file (str):
+            If save_dir specified, specify a file name you wish to save to.
+            Ignored if save_dir is None
+    """
+    for key in metric_keys:
+        plt.plot(metric_dict[threshold_key], metric_dict[key], label=key)
+    plt.xlabel("Threshold")
+    plt.ylabel("Metric")
+    plt.legend()
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
         plt.savefig(os.path.join(save_dir, save_file), dpi=dpi)
