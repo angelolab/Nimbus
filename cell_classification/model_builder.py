@@ -1,4 +1,3 @@
-from cProfile import label
 import os
 import argparse
 import tensorflow as tf
@@ -8,6 +7,8 @@ from post_processing import merge_activity_df, process_to_cells
 from segmentation_data_prep import parse_dict, feature_description
 from deepcell.model_zoo.panopticnet import PanopticNet
 from tensorflow.keras.optimizers import SGD, Adam
+from tensorflow.keras.callbacks import LearningRateScheduler
+from tensorflow.keras.optimizers.schedules import CosineDecay
 from deepcell.utils.train_utils import rate_scheduler, get_callbacks, count_gpus
 from deepcell import losses
 from semantic_head import create_semantic_head
@@ -15,6 +16,7 @@ from tqdm import tqdm
 import numpy as np
 import h5py
 import pandas as pd
+from loss import Loss
 
 
 class ModelBuilder:
@@ -60,9 +62,15 @@ class ModelBuilder:
 
     def prep_model(self):
         """Prepares the model for training"""
+        # initialize optimizer and lr scheduler
+        # replace with AdamW when available
         self.optimizer = Adam(learning_rate=self.params["lr"], clipnorm=0.001)
-        self.lr_sched = rate_scheduler(lr=self.params["lr"], decay=0.99)
-
+        self.lr_sched = LearningRateScheduler(CosineDecay(
+            initial_learning_rate=self.params["lr"],
+            decay_steps=self.params["num_epochs"]*self.params["steps_per_epoch"], alpha=1e-6
+            )
+        )
+        # initialize model
         if "test" in self.params.keys() and self.params["test"]:
             self.model = tf.keras.Sequential(
                 [tf.keras.layers.Conv2D(
@@ -81,10 +89,8 @@ class ModelBuilder:
         # Give losses for all of the semantic heads
         for layer in self.model.layers:
             if layer.name.startswith("semantic_"):
-                n_classes = layer.output_shape[-1]
-                loss[layer.name] = self.prep_loss(n_classes)
+                loss[layer.name] = self.prep_loss()
 
-        self.model.compile(loss=loss, optimizer=self.optimizer)
         # prepare folders
         self.params['model_dir'] = os.path.join(
             os.path.normpath(self.params["path"]), self.params["experiment"]
@@ -104,17 +110,21 @@ class ModelBuilder:
 
         self.train_callbacks = get_callbacks(
             self.params['model_path'],
-            lr_sched=self.lr_sched,
             tensorboard_log_dir=self.params['log_dir'],
             save_weights_only=self.num_gpus >= 2,
             monitor="val_loss",
             verbose=1,
         )
+        self.train_callbacks.append(self.lr_sched)
+        if "weight_decay" in self.params.keys():
+            self.add_weight_decay()
+        self.model.compile(loss=loss, optimizer=self.optimizer)
 
     def train(self):
         """Calls prep functions and starts training loops"""
         self.prep_data()
         self.prep_model()
+        #
         validation_dataset = self.validation_dataset.map(
                 self.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
         )
@@ -128,19 +138,17 @@ class ModelBuilder:
             callbacks=self.train_callbacks,
         )
 
-    def prep_loss(self, n_classes):
+    def prep_loss(self):
         """Prepares the loss function for the model
         Args:
             n_classes (int): Number of semantic classes in the dataset
         Returns:
             loss_fn (function): Loss function for the model
         """
-        if n_classes == 1:
-            def loss_fn(y_true, y_pred):
-                return tf.keras.losses.binary_crossentropy(y_true, y_pred, from_logits=False)
-        elif n_classes > 1:
-            def loss_fn(y_true, y_pred):
-                return tf.keras.losses.categorical_crossentropy(y_true, y_pred, from_logits=False)
+        loss_fn = Loss(
+            self.params["loss_fn"], self.params["loss_selective_masking"],
+            **self.params["loss_kwargs"]
+        )
         return loss_fn
 
     @staticmethod
@@ -158,7 +166,7 @@ class ModelBuilder:
         inputs = tf.concat(
             [batch["mplex_img"], tf.cast(batch["binary_mask"], tf.float32)], axis=-1
         )
-        targets = tf.clip_by_value(batch["marker_activity_mask"], 0, 1)
+        targets = batch["marker_activity_mask"]
         return inputs, targets
 
     def predict(self, image):
@@ -194,6 +202,9 @@ class ModelBuilder:
             loss (float):
                 Loss on the validation dataset
         """
+        val_dset = val_dset.map(
+                self.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
+        )
         loss = self.model.evaluate(val_dset)
         return loss
 
@@ -254,6 +265,17 @@ class ModelBuilder:
         with open(os.path.join(self.params["model_dir"], "params.toml"), "w") as f:
             toml.dump(self.params, f)
         return single_example_list
+
+    def add_weight_decay(self):
+        if self.params["weight_decay"] in [False, None]:
+            return None
+        alpha = self.params["weight_decay"]
+        for layer in self.model.layers:
+            if isinstance(layer, tf.keras.layers.Conv2D) or \
+                    isinstance(layer, tf.keras.layers.Dense):
+                layer.add_loss(lambda layer=layer: tf.keras.regularizers.l2(alpha)(layer.kernel))
+            if hasattr(layer, 'bias_regularizer') and layer.use_bias:
+                layer.add_loss(lambda layer=layer: tf.keras.regularizers.l2(alpha)(layer.bias))
 
 
 if __name__ == "__main__":
