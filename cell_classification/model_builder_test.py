@@ -13,7 +13,7 @@ def test_prep_loss():
     with tempfile.TemporaryDirectory() as temp_dir:
         params = toml.load("cell_classification/configs/params.toml")
         trainer = ModelBuilder(params)
-        loss_fn = trainer.prep_loss(2)
+        loss_fn = trainer.prep_loss()
 
         # sanity check outputs of loss function
         loss = loss_fn(
@@ -72,6 +72,7 @@ def test_prep_model():
     with tempfile.TemporaryDirectory() as temp_dir:
         params = toml.load("cell_classification/configs/params.toml")
         params["path"] = temp_dir
+
         trainer = ModelBuilder(params)
         trainer.prep_model()
 
@@ -85,8 +86,8 @@ def test_prep_model():
 
         # check if callbacks were created
         assert isinstance(trainer.train_callbacks[0], tf.keras.callbacks.ModelCheckpoint)
-        assert isinstance(trainer.train_callbacks[1], tf.keras.callbacks.LearningRateScheduler)
-        assert isinstance(trainer.train_callbacks[2], tf.keras.callbacks.TensorBoard)
+        assert isinstance(trainer.train_callbacks[1], tf.keras.callbacks.TensorBoard)
+        assert isinstance(trainer.train_callbacks[2], tf.keras.callbacks.LearningRateScheduler)
 
         # check if model path is taken from params.toml if it exists
         trainer.params["model_path"] = os.path.join(temp_dir, "test_dir", "test.h5")
@@ -108,6 +109,9 @@ def test_train():
         params["num_validation"] = 2
         params["batch_size"] = 2
         params["test"] = True
+        params["weight_decay"] = 1e-4
+        params["steps_per_epoch"] = 5000
+
         trainer = ModelBuilder(params)
         trainer.train()
 
@@ -210,3 +214,42 @@ def test_predict_dataset():
             assert f['prediction'].shape == (256, 256, 1)
             assert f['marker_activity_mask'].shape == (256, 256, 1)
             assert set(list(f.keys())) == set(list(single_example_list[0].keys()))
+
+
+def test_add_weight_decay():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
+        data_prep.tf_record_path = temp_dir
+        data_prep.make_tf_record()
+        tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
+        params = toml.load("cell_classification/configs/params.toml")
+        params["record_path"] = tf_record_path
+        params["path"] = temp_dir
+        params["experiment"] = "test"
+        params["num_epochs"] = 2
+        params["num_validation"] = 2
+        params["batch_size"] = 2
+        params["test"] = True
+        params["weight_decay"] = 1e-3
+
+        trainer = ModelBuilder(params)
+        trainer.prep_model()
+
+        # check if weight decay is added to the model losses
+        assert len(trainer.model.losses) > 1
+
+        # check if loss is higher with weight decay than without weight decay
+        trainer = ModelBuilder(params)
+        trainer.prep_data()
+        tf.random.set_seed(42)
+        trainer.prep_model()
+        loss_with_weight_decay = trainer.validate(trainer.validation_dataset)
+
+        params["weight_decay"] = False
+        trainer_no_decay = ModelBuilder(params)
+        trainer_no_decay.prep_data()
+        tf.random.set_seed(42)
+        trainer_no_decay.prep_model()
+        loss_without_weight_decay = trainer_no_decay.validate(trainer.validation_dataset)
+
+        assert loss_with_weight_decay > loss_without_weight_decay
