@@ -47,4 +47,4 @@ def test_loss():
     assert config["loss_name"] == "BinaryFocalCrossentropy"
     assert config["label_smoothing"] == 0.1
     assert config["gamma"] == 2
-    assert config["selective_masking"] == True
+    assert config["selective_masking"]

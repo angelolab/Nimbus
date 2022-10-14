@@ -59,5 +59,5 @@ class Loss():
         return {
             "loss_name": self.loss_fn.__class__.__name__,
             "selective_masking": self.selective_masking,
-            "kwargs": self.loss_fn.get_config(),
+            **self.loss_fn.get_config(),
         }
