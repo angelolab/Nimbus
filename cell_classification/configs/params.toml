@@ -30,7 +30,7 @@ steps_per_epoch = 100
 loss_fn = "BinaryCrossentropy"
 loss_selective_masking = true
 [loss_kwargs]
-from_logits = true
+from_logits = false
 label_smoothing = 0.1
 
 [classes]

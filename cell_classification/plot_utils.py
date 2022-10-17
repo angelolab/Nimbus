@@ -7,8 +7,10 @@ from segmentation_data_prep import parse_dict, feature_description
 import tensorflow as tf
 from skimage.segmentation import find_boundaries
 import numpy as np
+import pandas as pd
 import argparse
 from tqdm import tqdm
+from metrics import calc_scores
 
 
 def segmentation_to_boundaries(labels):
@@ -177,12 +179,111 @@ def plot_metrics_against_threshold(
     """
     for key in metric_keys:
         plt.plot(metric_dict[threshold_key], metric_dict[key], label=key)
-    plt.xlabel("Threshold")
-    plt.ylabel("Metric")
-    plt.legend()
+        plt.xlabel("Threshold")
+        plt.ylabel("Metric")
+        plt.legend()
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
         plt.savefig(os.path.join(save_dir, save_file), dpi=dpi)
+    else:
+        plt.show()
+    plt.close()
+
+
+def collapse_activity_dfs(pred_list):
+    """Collapse activity dataframes
+    Args:
+        pred_list (list):
+            list of dictionaries containing activity dataframes
+    Returns:
+        collapsed_df (pd.DataFrame):
+            collapsed activity dataframe
+    """
+    collapsed_df = pd.DataFrame()
+    for sample in pred_list:
+        collapsed_df = pd.concat([collapsed_df, sample["activity_df"]])
+    return collapsed_df
+
+
+def subset_activity_df(activity_df, subset_dict):
+    """Subset predictions by marker
+    Args:
+        activity_df (pd.DataFrame):
+            activity dataframe
+        subset_dict (dict):
+            dictionary mapping activity_df colnames to values in this column to subset
+    Returns:
+        subset_df (pd.DataFrame):
+            subsetted activity dataframe
+    """
+    subset_df = activity_df.copy()
+    for key, value in subset_dict.items():
+        subset_df = subset_df[subset_df[key] == value]
+    return subset_df
+
+
+def subset_plots(activity_df, subset_list, save_dir=None, save_file=None, dpi=160):
+    """
+    Plot the activity of each marker in the subset_list
+    Args:
+        activity_df (pd.DataFrame):
+            A dataframe containing the activity of each marker
+        subset_list (list):
+            A list of markers you want to plot
+        save_dir (str):
+            If specified, a directory where we will save the plot
+        save_file (str):
+            If save_dir specified, specify a file name you wish to save to.
+            Ignored if save_dir is None
+        dpi (int):
+            The resolution of the image to save, ignored if save_dir is None
+    """
+    # prepare subset_uniques
+    subset_uniques = {}
+    for subset in subset_list:
+        subset_uniques[subset] = np.unique(getattr(activity_df, subset)).tolist()
+
+    # prepare plot grid
+    ndim = len(subset_list)
+    if ndim == 1:
+        plot_dim = [np.ceil(np.sqrt(len(subset_uniques[subset])))]*2
+    elif ndim > 1:
+        plot_dim = [len(item) for item in subset_uniques.items()]
+    plot_dim = [int(item) for item in plot_dim]
+    fig, ax = plt.subplots(plot_dim[0], plot_dim[1], figsize=(plot_dim[0]*2, plot_dim[1]*2))
+    for i in range(plot_dim[0]):
+        for j in range(plot_dim[1]):
+            key = list(subset_uniques.keys())[0]
+            if ndim == 1:
+                if i + j < len(subset_uniques[key]):
+                    subset_dict = {key: subset_uniques[key][i + j]}
+                else:
+                    break
+            else:
+                subset_dict = {key: subset_uniques[key][i] for key in subset_uniques.keys()}
+            df = subset_activity_df(activity_df, subset_dict)
+            thresholds = np.linspace(0.01, 1, 50)
+            metrics = [calc_scores(df["activity"], df["prediction"], i) for i in thresholds]
+            metric_dict = {
+                "threshold": thresholds,
+                "precision": [np.mean(i["precision"]) for i in metrics],
+                "recall": [np.mean(i["recall"]) for i in metrics],
+                "f1_score": [np.mean(i["f1_score"]) for i in metrics],
+            }
+            threshold_key = "threshold"
+            metric_keys = ["precision", "recall", "f1_score"]
+            for key in metric_keys:
+                ax[i, j].set_title(
+                    "".join([str(s[0]) + ": " + str(s[1]) + " " for s in subset_dict.items()])
+                )
+                ax[i, j].plot(metric_dict[threshold_key], metric_dict[key], label=key)
+                ax[i, j].set_xlabel("Threshold")
+                ax[i, j].set_ylabel("Metric")
+                ax[i, j].legend()
+    if save_dir:
+        os.makedirs(save_dir, exist_ok=True)
+        plt.savefig(os.path.join(save_dir, save_file), dpi=dpi)
+        plt.close()
     else:
         plt.show()
     plt.close()

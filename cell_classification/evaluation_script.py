@@ -3,8 +3,10 @@ import toml
 import os
 import pickle
 import pandas as pd
+import numpy as np
 from metrics import load_model_and_val_data, calc_roc, average_roc, calc_metrics
-from plot_utils import plot_average_roc, plot_metrics_against_threshold
+from plot_utils import plot_average_roc, plot_metrics_against_threshold, subset_plots
+from plot_utils import collapse_activity_dfs
 
 
 if __name__ == "__main__":
@@ -29,6 +31,7 @@ if __name__ == "__main__":
     params["model_path"] = args.model_path
     model, val_dset = load_model_and_val_data(params)
     params["eval_dir"] = os.path.join(params["model_dir"], "eval")
+    os.makedirs(params["eval_dir"], exist_ok=True)
     pred_list = model.predict_dataset(val_dset, True)
 
     # pixel level evaluation
@@ -74,4 +77,22 @@ if __name__ == "__main__":
         threshold_key="threshold",
         save_dir=params["eval_dir"],
         save_file="precision_recall_f1_cell_lvl.png",
+    )
+
+    print("Plot activity predictions split by markers and cell types")
+    activity_df = collapse_activity_dfs(pred_list)
+    subset_plots(
+        activity_df, subset_list=["marker"],
+        save_dir=params["eval_dir"],
+        save_file="split_by_marker.png"
+    )
+    subset_plots(
+        activity_df, subset_list=["cell_type"],
+        save_dir=params["eval_dir"],
+        save_file="split_by_marker.png"
+    )
+    subset_plots(
+        activity_df, subset_list=["marker", "cell_type"],
+        save_dir=params["eval_dir"],
+        save_file="split_by_marker_ct.png"
     )
