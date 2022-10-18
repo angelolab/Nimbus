@@ -13,7 +13,7 @@ import tensorflow as tf
 def prep_object(
     data_dir="path", cell_table_path="path", conversion_matrix_path="path",
     normalization_dict_path="path", tf_record_path="path", tile_size=[256, 256], stride=[256, 256],
-    normalization_quantile=0.999, selected_markers=None,
+    normalization_quantile=0.999, selected_markers=None, segmentation_naming_convention=None
 ):
     data_prep = SegmentationTFRecords(
         data_dir=data_dir, cell_table_path=cell_table_path,
@@ -21,6 +21,7 @@ def prep_object(
         dataset="dataset", tile_size=tile_size, stride=stride, tf_record_path=tf_record_path,
         normalization_dict_path=normalization_dict_path, selected_markers=selected_markers,
         normalization_quantile=normalization_quantile,
+        segmentation_naming_convention=segmentation_naming_convention
     )
     return data_prep
 
@@ -314,6 +315,22 @@ def test_get_inst_binary_masks():
 
         # check if binary mask is eroded correctly
         assert np.array_equal(np.squeeze(loaded_binary_img), instance_mask_eroded)
+
+    # check if it works with naming convention function
+    with tempfile.TemporaryDirectory() as temp_dir:
+        segmentation_path = os.path.join(temp_dir, "segmentations")
+        samples_path = os.path.join(temp_dir, "samples", "sample_1")
+        os.mkdir(segmentation_path)
+        imwrite(os.path.join(segmentation_path, "sample_1.tiff"), instance_mask)
+
+        def naming_convention(sample_name):
+            return os.path.join(segmentation_path, sample_name + ".tiff")
+
+        data_prep = prep_object(segmentation_naming_convention=naming_convention)
+        loaded_binary_img, loaded_img = data_prep.get_inst_binary_masks(data_folder=samples_path)
+
+        # check if the instance_mask is correctly loaded
+        assert np.array_equal(np.squeeze(loaded_img), instance_mask)
 
 
 def test_get_marker_activity():

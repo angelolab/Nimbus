@@ -19,6 +19,7 @@ class SegmentationTFRecords:
         tile_size, stride, tf_record_path, selected_markers=None, normalization_dict_path=None,
         normalization_quantile=0.999, cell_type_key="cluster_labels", sample_key="SampleID",
         segmentation_fname="cell_segmentation", segment_label_key="labels",
+        segmentation_naming_convention=None
     ):
         """Initializes SegmentationTFRecords and loads everything except the images
 
@@ -54,6 +55,10 @@ class SegmentationTFRecords:
                 The filename in the data_folder that contains the cell instance segmentation
             segment_label_key (str):
                 The key in the cell_table.csv that contains the cell segment labels
+            segmentation_naming_convention (Function):
+                Function that takes in the sample name and returns the path to the segmentation
+                .tiff file. Default is None, then it is assumed that the segmentation file is in
+                the sample folder and is named $segmentation_fname.tiff
         """
         self.selected_markers = selected_markers
         self.data_dir = data_dir
@@ -70,6 +75,7 @@ class SegmentationTFRecords:
         self.cell_table_path = cell_table_path
         self.tile_size = tile_size
         self.stride = stride
+        self.segmentation_naming_convention = segmentation_naming_convention
 
     def get_image(self, data_folder, marker):
         """Loads the images from a single data_folder
@@ -104,7 +110,11 @@ class SegmentationTFRecords:
             np.array:
                 The instance mask
         """
-        instance_mask = imread(os.path.join(data_folder, self.segmentation_fname + ".tiff"))
+        if self.segmentation_naming_convention is None:
+            instance_mask = imread(os.path.join(data_folder, self.segmentation_fname + ".tiff"))
+        else:
+            sample_name = os.path.basename(data_folder)
+            instance_mask = imread(self.segmentation_naming_convention(sample_name))
         instance_mask = np.squeeze(instance_mask)
         if instance_mask.ndim == 2:
             instance_mask = np.expand_dims(instance_mask, axis=-1)
