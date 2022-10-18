@@ -201,6 +201,7 @@ def collapse_activity_dfs(pred_list):
     """
     collapsed_df = pd.DataFrame()
     for sample in pred_list:
+        sample["activity_df"]["marker"] = [sample["marker"]] * len(sample["activity_df"])
         collapsed_df = pd.concat([collapsed_df, sample["activity_df"]])
     return collapsed_df
 
@@ -222,7 +223,10 @@ def subset_activity_df(activity_df, subset_dict):
     return subset_df
 
 
-def subset_plots(activity_df, subset_list, save_dir=None, save_file=None, dpi=160):
+def subset_plots(
+    activity_df, subset_list, save_dir=None, save_file=None, dpi=160, gt_key="activity",
+    pred_key="prediction",
+):
     """
     Plot the activity of each marker in the subset_list
     Args:
@@ -246,40 +250,48 @@ def subset_plots(activity_df, subset_list, save_dir=None, save_file=None, dpi=16
     # prepare plot grid
     ndim = len(subset_list)
     if ndim == 1:
-        plot_dim = [np.ceil(np.sqrt(len(subset_uniques[subset])))]*2
+        plot_dim = [np.ceil(np.sqrt(len(subset_uniques[subset])))] * 2
     elif ndim > 1:
-        plot_dim = [len(item) for item in subset_uniques.items()]
+        plot_dim = [len(value) for value in subset_uniques.values()]
     plot_dim = [int(item) for item in plot_dim]
-    fig, ax = plt.subplots(plot_dim[0], plot_dim[1], figsize=(plot_dim[0]*2, plot_dim[1]*2))
+    fig, ax = plt.subplots(plot_dim[0], plot_dim[1], figsize=(plot_dim[1] * 7, plot_dim[0] * 7))
+    k = 0
     for i in range(plot_dim[0]):
         for j in range(plot_dim[1]):
-            key = list(subset_uniques.keys())[0]
-            if ndim == 1:
-                if i + j < len(subset_uniques[key]):
-                    subset_dict = {key: subset_uniques[key][i + j]}
-                else:
-                    break
+            if ndim == 1 and k < len(subset_uniques[subset_list[0]]):
+                subset_key = subset_list[0]
+                subset_dict = {subset_key: subset_uniques[subset_key][k]}
+                k += 1
+            elif ndim > 1:
+                subset_dict = {
+                    subset_list[0]: subset_uniques[subset_list[0]][i],
+                    subset_list[1]: subset_uniques[subset_list[1]][j],
+                }
             else:
-                subset_dict = {key: subset_uniques[key][i] for key in subset_uniques.keys()}
+                continue
             df = subset_activity_df(activity_df, subset_dict)
             thresholds = np.linspace(0.01, 1, 50)
-            metrics = [calc_scores(df["activity"], df["prediction"], i) for i in thresholds]
+            metrics = [calc_scores(df[gt_key], df[pred_key], t) for t in thresholds]
             metric_dict = {
                 "threshold": thresholds,
-                "precision": [np.mean(i["precision"]) for i in metrics],
-                "recall": [np.mean(i["recall"]) for i in metrics],
-                "f1_score": [np.mean(i["f1_score"]) for i in metrics],
+                "precision": [np.mean(m["precision"]) for m in metrics],
+                "recall": [np.mean(m["recall"]) for m in metrics],
+                "specificity": [np.mean(m["specificity"]) for m in metrics],
+                "f1_score": [np.mean(m["f1_score"]) for m in metrics],
             }
             threshold_key = "threshold"
-            metric_keys = ["precision", "recall", "f1_score"]
+            metric_keys = ["precision", "recall", "f1_score", "specificity"]
             for key in metric_keys:
                 ax[i, j].set_title(
                     "".join([str(s[0]) + ": " + str(s[1]) + " " for s in subset_dict.items()])
+                    + "pos=" + str(df["activity"].sum())
+                    + " neg=" + str(len(df["activity"]) - df["activity"].sum())
                 )
                 ax[i, j].plot(metric_dict[threshold_key], metric_dict[key], label=key)
                 ax[i, j].set_xlabel("Threshold")
                 ax[i, j].set_ylabel("Metric")
-                ax[i, j].legend()
+                ax[i, j].legend(loc="lower right")
+    plt.tight_layout()
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
         plt.savefig(os.path.join(save_dir, save_file), dpi=dpi)

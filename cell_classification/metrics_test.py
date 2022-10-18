@@ -32,7 +32,8 @@ def make_pred_list():
                 "prediction": np.random.rand(256, 256, 1),
                 "instance_mask": instance_mask,
                 "binary_mask": binary_mask,
-                "dataset": "test", "imaging_platform": "test", "marker": "test",
+                "dataset": "test", "imaging_platform": "test",
+                "marker": "CD4" if i % 2 == 0 else "CD8",
                 "activity_df": activity_df,
             }
         )
@@ -55,8 +56,8 @@ def test_calc_metrics():
     pred_list = make_pred_list()
     avg_metrics = calc_metrics(pred_list)
     keys = [
-        "accuracy", "precision", "recall", "f1_score", "tp", "tn", "fp", "fn", "dataset",
-        "imaging_platform", "marker", "threshold",
+        "accuracy", "precision", "recall", "specificity", "f1_score", "tp", "tn", "fp", "fn",
+        "dataset", "imaging_platform", "marker", "threshold",
     ]
 
     # check if avg_metrics has the right keys

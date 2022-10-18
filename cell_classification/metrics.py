@@ -87,6 +87,7 @@ def calc_scores(gt, pred, threshold):
         "accuracy": (tp + tn) / (tp + tn + fp + fn + 1e-8),
         "precision": tp / (tp + fp + 1e-8),
         "recall": tp / (tp + fn + 1e-8),
+        "specificity": tn / (tn + fp + 1e-8),
         "f1_score": 2 * tp / (2 * tp + fp + fn + 1e-8),
     }
     return metrics
@@ -108,8 +109,8 @@ def calc_metrics(
             dictionary containing metrics averaged over all samples
     """
     metrics_dict = {
-        "accuracy": [], "precision": [], "recall": [], "f1_score": [], "tp": [], "tn": [],
-        "fp": [], "fn": [],
+        "accuracy": [], "precision": [], "recall": [], "specificity": [], "f1_score": [], "tp": [],
+        "tn": [], "fp": [], "fn": [],
     }
 
     def _calc_metrics(threshold):
@@ -128,7 +129,13 @@ def calc_metrics(
             if gt.size == 0:
                 continue
             scores = calc_scores(gt, pred, threshold)
-            for key in scores.keys():
+
+            # only add specificity for samples that have no positives
+            if np.sum(gt) == 0:
+                keys = ["specificity"]
+            else:
+                keys = scores.keys()
+            for key in keys:
                 metrics[key].append(scores[key])
             metrics["threshold"] = threshold
         for key in ["dataset", "imaging_platform", "marker"]:
@@ -144,7 +151,7 @@ def calc_metrics(
     for key in ["dataset", "imaging_platform", "marker", "threshold"]:
         avg_metrics[key] = []
     for metrics in metric_list:
-        for key in ["accuracy", "precision", "recall", "f1_score"]:  # averade metrics
+        for key in ["accuracy", "precision", "recall", "specificity", "f1_score"]:
             avg_metrics[key].append(np.mean(metrics[key]))
         for key in ["tp", "tn", "fp", "fn"]:  # sum fn, fp, tn, tp
             avg_metrics[key].append(np.sum(metrics[key]))
