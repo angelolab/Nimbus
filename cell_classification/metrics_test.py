@@ -5,23 +5,36 @@ import tempfile
 import toml
 import os
 from metrics import calc_roc, calc_metrics, average_roc, HDF5Loader
-
 import numpy as np
 import pandas as pd
 
 
 def make_pred_list():
     pred_list = []
-    for _ in range(10):
+    for i in range(10):
         instance_mask = np.random.randint(0, 10, size=(256, 256, 1))
         binary_mask = (instance_mask > 0).astype(np.uint8)
+        activity_df = pd.DataFrame(
+            {
+                "labels": np.array([1, 2, 5, 7, 9, 11], dtype=np.uint16),
+                "activity": [1, 0, 0, 0, 0, 1],
+                "cell_type": ["T cell", "B cell", "T cell", "B cell", "T cell", "B cell"],
+                "sample": [str(i)]*6,
+                "imaging_platform": ["test"]*6,
+                "dataset": ["test"]*6,
+                "marker": ["CD4"]*6 if i % 2 == 0 else "CD8",
+                "prediction": np.random.rand(6),
+            }
+        )
         pred_list.append(
             {
                 "marker_activity_mask": np.random.randint(0, 2, (256, 256, 1))*binary_mask,
                 "prediction": np.random.rand(256, 256, 1),
                 "instance_mask": instance_mask,
                 "binary_mask": binary_mask,
-                "dataset": "test", "imaging_platform": "test", "marker": "test",
+                "dataset": "test", "imaging_platform": "test",
+                "marker": "CD4" if i % 2 == 0 else "CD8",
+                "activity_df": activity_df,
             }
         )
     pred_list[-1]["marker_activity_mask"] = np.zeros((256, 256, 1))
@@ -43,8 +56,8 @@ def test_calc_metrics():
     pred_list = make_pred_list()
     avg_metrics = calc_metrics(pred_list)
     keys = [
-        "accuracy", "precision", "recall", "f1_score", "tp", "tn", "fp", "fn", "dataset",
-        "imaging_platform", "marker", "threshold",
+        "accuracy", "precision", "recall", "specificity", "f1_score", "tp", "tn", "fp", "fn",
+        "dataset", "imaging_platform", "marker", "threshold",
     ]
 
     # check if avg_metrics has the right keys

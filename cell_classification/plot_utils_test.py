@@ -3,8 +3,8 @@ from segmentation_data_prep import parse_dict, feature_description
 from segmentation_data_prep_test import prep_object_and_inputs
 import pytest
 import tempfile
-from plot_utils import plot_overlay, plot_together, plot_average_roc
-from plot_utils import plot_metrics_against_threshold
+from plot_utils import plot_overlay, plot_together, plot_average_roc, subset_plots
+from plot_utils import plot_metrics_against_threshold, subset_activity_df, collapse_activity_dfs
 from metrics_test import make_pred_list
 from metrics import calc_roc, average_roc, calc_metrics
 import os
@@ -78,3 +78,47 @@ def test_plot_metrics_against_threshold():
 
         # check if plot was saved
         assert os.path.exists(os.path.join(plot_path, "metrics_against_threshold.png"))
+
+
+def test_collapse_activity_dfs():
+    pred_list = make_pred_list()
+    df = collapse_activity_dfs(pred_list)
+
+    # check if df has the right shape and keys
+    assert df.shape == (len(pred_list)*6, 8)
+    assert set(df.columns) == set(pred_list[0]["activity_df"].columns)
+
+
+def test_subset_activity_df():
+    pred_list = make_pred_list()
+    df = collapse_activity_dfs(pred_list)
+    cd4_subset = subset_activity_df(df, {"marker": "CD4"})
+    cd4_tcells_subset = subset_activity_df(df, {"marker": "CD4", "cell_type": "T cell"})
+
+    # check if cd4_subset and cd8_subset have the right shape
+    assert set(cd4_subset["marker"]) == set(["CD4"])
+    assert cd4_subset.shape == df[df.marker == "CD4"].shape
+
+    # check if cd4_tcells_subset has the right shape
+    assert set(cd4_tcells_subset["marker"]) == set(["CD4"])
+    assert set(cd4_tcells_subset["cell_type"]) == set(["T cell"])
+    assert cd4_tcells_subset.shape == df[(df.marker == "CD4") & (df.cell_type == "T cell")].shape
+
+
+def test_subset_plots():
+    pred_list = make_pred_list()
+    activity_df = collapse_activity_dfs(pred_list)
+    with tempfile.TemporaryDirectory() as temp_dir:
+        plot_path = os.path.join(temp_dir, "plots")
+        os.makedirs(plot_path, exist_ok=True)
+        subset_plots(
+            activity_df, subset_list=["marker"], save_dir=plot_path,
+            save_file="split_by_marker.png"
+        )
+        subset_plots(
+            activity_df, subset_list=["marker", "cell_type"], save_dir=plot_path,
+            save_file="split_by_marker_ct.png"
+        )
+
+        # check if plots were saved
+        assert os.path.exists(os.path.join(plot_path, "split_by_marker.png"))
