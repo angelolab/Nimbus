@@ -199,10 +199,11 @@ def collapse_activity_dfs(pred_list):
         collapsed_df (pd.DataFrame):
             collapsed activity dataframe
     """
-    collapsed_df = pd.DataFrame()
+    collapse_list = []
     for sample in pred_list:
         sample["activity_df"]["marker"] = [sample["marker"]] * len(sample["activity_df"])
-        collapsed_df = pd.concat([collapsed_df, sample["activity_df"]])
+        collapse_list.append(sample["activity_df"])
+    collapsed_df = pd.concat(collapse_list)
     return collapsed_df
 
 
