@@ -6,13 +6,10 @@ import os
 from sklearn.metrics import roc_curve, auc, confusion_matrix
 from model_builder import ModelBuilder
 import numpy as np
-from tqdm import tqdm
-from plot_utils import plot_average_roc, plot_metrics_against_threshold
 import toml
 from copy import deepcopy
 from joblib import Parallel, delayed
 import pandas as pd
-import tables
 
 
 def load_model_and_val_data(params):
@@ -66,6 +63,36 @@ def calc_roc(pred_list, gt_key="marker_activity_mask", pred_key="prediction", ce
     return roc
 
 
+def calc_scores(gt, pred, threshold):
+    """Calculate scores for a given threshold
+    Args:
+        gt (np.array):
+            ground truth labels
+        pred (np.array):
+            predictions
+        threshold (float):
+            threshold for predictions
+    Returns:
+        scores (dict):
+            dictionary containing scores
+    """
+    # exclude masked out regions from metric calculation
+    gt = gt[gt < 2]
+    pred = pred[gt < 2]
+    tn, fp, fn, tp = confusion_matrix(
+        y_true=gt, y_pred=(pred >= threshold).astype(int), labels=[0, 1]
+    ).ravel()
+    metrics = {
+        "tp": tp, "tn": tn, "fp": fp, "fn": fn,
+        "accuracy": (tp + tn) / (tp + tn + fp + fn + 1e-8),
+        "precision": tp / (tp + fp + 1e-8),
+        "recall": tp / (tp + fn + 1e-8),
+        "specificity": tn / (tn + fp + 1e-8),
+        "f1_score": 2 * tp / (2 * tp + fp + fn + 1e-8),
+    }
+    return metrics
+
+
 def calc_metrics(
     pred_list, gt_key="marker_activity_mask", pred_key="prediction", cell_level=False
 ):
@@ -82,19 +109,14 @@ def calc_metrics(
             dictionary containing metrics averaged over all samples
     """
     metrics_dict = {
-        "accuracy": [],
-        "precision": [],
-        "recall": [],
-        "f1_score": [],
-        "tp": [],
-        "tn": [],
-        "fp": [],
-        "fn": [],
+        "accuracy": [], "precision": [], "recall": [], "specificity": [], "f1_score": [], "tp": [],
+        "tn": [], "fp": [], "fn": [],
     }
 
     def _calc_metrics(threshold):
         """Helper function to calculate metrics for a given threshold in parallel"""
         metrics = deepcopy(metrics_dict)
+
         for sample in pred_list:
             if cell_level:
                 df = sample["activity_df"]
@@ -106,18 +128,16 @@ def calc_metrics(
                 pred = sample[pred_key][foreground].flatten()
             if gt.size == 0:
                 continue
-            tn, fp, fn, tp = confusion_matrix(
-                y_true=gt.clip(0, 1), y_pred=(pred >= threshold).astype(int), labels=[0, 1]
-            ).ravel()
-            metrics["tp"].append(tp)
-            metrics["tn"].append(tn)
-            metrics["fp"].append(fp)
-            metrics["fn"].append(fn)
-            metrics["accuracy"].append((tp + tn) / (tp + tn + fp + fn + 1e-8))
-            metrics["precision"].append(tp / (tp + fp + 1e-8))
-            metrics["recall"].append(tp / (tp + fn + 1e-8))
-            metrics["f1_score"].append(2 * tp / (2 * tp + fp + fn + 1e-8))
-        metrics["threshold"] = threshold
+            scores = calc_scores(gt, pred, threshold)
+
+            # only add specificity for samples that have no positives
+            if np.sum(gt) == 0:
+                keys = ["specificity"]
+            else:
+                keys = scores.keys()
+            for key in keys:
+                metrics[key].append(scores[key])
+            metrics["threshold"] = threshold
         for key in ["dataset", "imaging_platform", "marker"]:
             metrics[key] = sample[key]
         return metrics
@@ -131,7 +151,7 @@ def calc_metrics(
     for key in ["dataset", "imaging_platform", "marker", "threshold"]:
         avg_metrics[key] = []
     for metrics in metric_list:
-        for key in ["accuracy", "precision", "recall", "f1_score"]:  # averade metrics
+        for key in ["accuracy", "precision", "recall", "specificity", "f1_score"]:
             avg_metrics[key].append(np.mean(metrics[key]))
         for key in ["tp", "tn", "fp", "fn"]:  # sum fn, fp, tn, tp
             avg_metrics[key].append(np.sum(metrics[key]))
