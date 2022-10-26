@@ -13,7 +13,7 @@ import tensorflow as tf
 def prep_object(
     data_dir="path", cell_table_path="path", conversion_matrix_path="path",
     normalization_dict_path="path", tf_record_path="path", tile_size=[256, 256], stride=[256, 256],
-    normalization_quantile=0.999, selected_markers=None,
+    normalization_quantile=0.999, selected_markers=None, segmentation_naming_convention=None
 ):
     data_prep = SegmentationTFRecords(
         data_dir=data_dir, cell_table_path=cell_table_path,
@@ -21,6 +21,7 @@ def prep_object(
         dataset="dataset", tile_size=tile_size, stride=stride, tf_record_path=tf_record_path,
         normalization_dict_path=normalization_dict_path, selected_markers=selected_markers,
         normalization_quantile=normalization_quantile,
+        segmentation_naming_convention=segmentation_naming_convention
     )
     return data_prep
 
@@ -253,7 +254,6 @@ def test_load_and_check_input():
         data_prep = copy.deepcopy(data_prep_working)
         data_prep.cell_type_table_path = cell_table_path
         data_prep.load_and_check_input()
-        cell_table["cluster_labels"] = cell_table["cluster_labels"].str.lower()
         assert np.array_equal(cell_table, data_prep.cell_type_table)
 
         # check if ValueError is raised when cell_type_key not in cell_type_table
@@ -315,6 +315,22 @@ def test_get_inst_binary_masks():
         # check if binary mask is eroded correctly
         assert np.array_equal(np.squeeze(loaded_binary_img), instance_mask_eroded)
 
+    # check if it works with naming convention function
+    with tempfile.TemporaryDirectory() as temp_dir:
+        segmentation_path = os.path.join(temp_dir, "segmentations")
+        samples_path = os.path.join(temp_dir, "samples", "sample_1")
+        os.mkdir(segmentation_path)
+        imwrite(os.path.join(segmentation_path, "sample_1.tiff"), instance_mask)
+
+        def naming_convention(sample_name):
+            return os.path.join(segmentation_path, sample_name + ".tiff")
+
+        data_prep = prep_object(segmentation_naming_convention=naming_convention)
+        loaded_binary_img, loaded_img = data_prep.get_inst_binary_masks(data_folder=samples_path)
+
+        # check if the instance_mask is correctly loaded
+        assert np.array_equal(np.squeeze(loaded_img), instance_mask)
+
 
 def test_get_marker_activity():
 
@@ -325,8 +341,10 @@ def test_get_marker_activity():
     marker = "CD4"
     sample_name = "fov_1"
     fov_1_subset = cell_table[cell_table.SampleID == sample_name]
+    data_prep.sample_subset = fov_1_subset
+    conversion_matrix.index = conversion_matrix.index.str.lower()
+    fov_1_subset["cluster_labels"] = fov_1_subset["cluster_labels"].str.lower()
     marker_activity, _ = data_prep.get_marker_activity(sample_name, conversion_matrix, marker)
-
     # check if the we get marker_acitivity for all labels in the fov_1 subset
     assert np.array_equal(marker_activity.labels, fov_1_subset.labels)
 
@@ -444,6 +462,11 @@ def test_prepare_example():
     data_prep = prep_object()
     with tempfile.TemporaryDirectory() as temp_dir:
         data_prep, data_folders, _, _ = prep_object_and_inputs(temp_dir)
+        data_prep.sample_subset = data_prep.cell_type_table[
+            data_prep.cell_type_table.SampleID == os.path.basename(data_folders[0])
+        ]
+        data_prep.binary_mask = np.random.randint(0, 2, [256, 256, 1]).astype(np.uint8)
+        data_prep.instance_mask = np.zeros([256, 256, 1], dtype=np.uint16)
         example = data_prep.prepare_example(data_folders[0], marker="CD4")
         # check keys in example
         assert set(example.keys()) == set(
@@ -465,6 +488,11 @@ def test_prepare_example():
 def test_serialize_example():
     with tempfile.TemporaryDirectory() as temp_dir:
         data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
+        data_prep.sample_subset = data_prep.cell_type_table[
+            data_prep.cell_type_table.SampleID == os.path.basename("fov_1")
+        ]
+        data_prep.binary_mask = np.random.randint(0, 2, [256, 256, 1]).astype(np.uint8)
+        data_prep.instance_mask = np.zeros([256, 256, 1], dtype=np.uint16)
         example = data_prep.prepare_example(os.path.join(temp_dir, "fov_1"), marker="CD4")
         serialized_example = data_prep.serialize_example(copy.deepcopy(example))
         deserialized_dict = tf.io.parse_single_example(serialized_example, feature_description)
