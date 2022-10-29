@@ -1,7 +1,7 @@
 record_path = "C:/Users/lorenz/Desktop/angelo_lab/MIBI_test/TNBC_CD45.tfrecord"
 path = "C:/Users/lorenz/OneDrive/Desktop/angelo_lab/"
 experiment = "test"
-num_epochs = 10
+num_steps = 20
 lr = 1e-3
 backbone = "resnet50"
 input_shape = [256,256,2]
@@ -26,7 +26,6 @@ contrast_prob = 0.5
 contrast_min = 0.8
 contrast_max = 1.2
 batch_size = 4
-steps_per_epoch = 100
 loss_fn = "BinaryCrossentropy"
 loss_selective_masking = true
 [loss_kwargs]
