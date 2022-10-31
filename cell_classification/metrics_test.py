@@ -99,6 +99,8 @@ def test_HDF5Generator():
         params["experiment"] = "test"
         params["num_epochs"] = 0
         params["num_validation"] = 2
+        params["snap_steps"] = 10
+        params["val_steps"] = 10
         model = ModelBuilder(params)
         model.train()
         model.params["eval"] = True

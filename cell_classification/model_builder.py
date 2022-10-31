@@ -7,7 +7,6 @@ from post_processing import merge_activity_df, process_to_cells
 from segmentation_data_prep import parse_dict, feature_description
 from deepcell.model_zoo.panopticnet import PanopticNet
 from tensorflow.keras.optimizers import SGD, Adam
-from tensorflow.keras.callbacks import LearningRateScheduler
 from tensorflow.keras.optimizers.schedules import CosineDecay
 from deepcell.utils.train_utils import rate_scheduler, get_callbacks, count_gpus
 from deepcell import losses
@@ -17,6 +16,8 @@ import numpy as np
 import h5py
 import pandas as pd
 from loss import Loss
+from tqdm import tqdm
+from time import time
 
 
 class ModelBuilder:
@@ -28,6 +29,7 @@ class ModelBuilder:
             params (dict): Dictionary of parameters from the config file
         """
         self.params = params
+        self.num_gpus = count_gpus()
 
     def prep_data(self):
         """Prepares training and validation data"""
@@ -35,54 +37,72 @@ class ModelBuilder:
         dataset = tf.data.TFRecordDataset(self.params["record_path"])
         dataset = dataset.map(
             lambda x: tf.io.parse_single_example(x, feature_description),
-            num_parallel_calls=tf.data.AUTOTUNE
+            num_parallel_calls=tf.data.AUTOTUNE,
         )
         dataset = dataset.map(parse_dict, num_parallel_calls=tf.data.AUTOTUNE)
 
         # split into train and validation
         self.validation_dataset = dataset.take(self.params["num_validation"])
         self.train_dataset = dataset.skip(self.params["num_validation"])
+        if "num_training" in self.params.keys():
+            self.train_dataset = self.train_dataset.take(self.params["num_training"])
 
         # shuffle, batch and augment the training data
         self.train_dataset = self.train_dataset.shuffle(self.params["shuffle_buffer_size"]).batch(
-            self.params["batch_size"]
+            self.params["batch_size"] * np.max([self.num_gpus, 1])
         )
         augmentation_pipeline = get_augmentation_pipeline(self.params)
         tf_aug = prepare_tf_aug(augmentation_pipeline)
         self.train_dataset = self.train_dataset.map(
-            lambda x: py_aug(x, tf_aug),
-            num_parallel_calls=tf.data.AUTOTUNE
+            lambda x: py_aug(x, tf_aug), num_parallel_calls=tf.data.AUTOTUNE
         )
         self.train_dataset = self.train_dataset.map(
-            self.prep_batches,
-            num_parallel_calls=tf.data.AUTOTUNE
+            self.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
         )
         self.train_dataset = self.train_dataset.prefetch(tf.data.AUTOTUNE)
-        self.validation_dataset = self.validation_dataset.batch(self.params["batch_size"])
+        self.validation_dataset = self.validation_dataset.batch(
+            self.params["batch_size"] * np.max([self.num_gpus, 1])
+        )
 
     def prep_model(self):
         """Prepares the model for training"""
+        # prepare folders
+        self.params["model_dir"] = os.path.join(
+            os.path.normpath(self.params["path"]), self.params["experiment"]
+        )
+        self.params["log_dir"] = os.path.join(self.params["model_dir"], "logs", str(int(time())))
+        os.makedirs(self.params["model_dir"], exist_ok=True)
+        os.makedirs(self.params["log_dir"], exist_ok=True)
+        if "model_path" not in self.params.keys() or self.params["model_path"] is None:
+            self.params["model_path"] = os.path.join(
+                self.params["model_dir"], "{}.h5".format(self.params["experiment"])
+            )
+        self.params["loss_path"] = os.path.join(
+            self.params["model_dir"], "{}.npz".format(self.params["experiment"])
+        )
+
         # initialize optimizer and lr scheduler
         # replace with AdamW when available
-        self.optimizer = Adam(learning_rate=self.params["lr"], clipnorm=0.001)
-        self.lr_sched = LearningRateScheduler(CosineDecay(
+        self.lr_sched = CosineDecay(
             initial_learning_rate=self.params["lr"],
-            decay_steps=self.params["num_epochs"]*self.params["steps_per_epoch"], alpha=1e-6
-            )
+            decay_steps=self.params["num_steps"],
+            alpha=1e-6,
         )
+        self.optimizer = Adam(learning_rate=self.lr_sched, clipnorm=0.001)
+
         # initialize model
         if "test" in self.params.keys() and self.params["test"]:
             self.model = tf.keras.Sequential(
                 [tf.keras.layers.Conv2D(
-                    1, (3, 3), input_shape=self.params["input_shape"], name="semantic_head",
-                    activation="sigmoid", padding="same", data_format="channels_last"
-                )]
+                        1, (3, 3), input_shape=self.params["input_shape"], padding="same",
+                        name="semantic_head", activation="sigmoid", data_format="channels_last",
+                    )]
             )
         else:
             self.model = PanopticNet(
                 backbone=self.params["backbone"], input_shape=self.params["input_shape"],
                 norm_method="std", num_semantic_classes=self.params["classes"],
-                create_semantic_head=create_semantic_head
+                create_semantic_head=create_semantic_head,
             )
 
         loss = {}
@@ -91,52 +111,99 @@ class ModelBuilder:
             if layer.name.startswith("semantic_"):
                 loss[layer.name] = self.prep_loss()
 
-        # prepare folders
-        self.params['model_dir'] = os.path.join(
-            os.path.normpath(self.params["path"]), self.params["experiment"]
-        )
-        self.params['log_dir'] = os.path.join(self.params['model_dir'], "logs")
-        os.makedirs(self.params['model_dir'], exist_ok=True)
-        os.makedirs(self.params['log_dir'], exist_ok=True)
-        if "model_path" not in self.params.keys() or self.params["model_path"] is None:
-            self.params['model_path'] = os.path.join(
-                self.params['model_dir'], "{}.h5".format(self.params["experiment"])
-            )
-        self.params['loss_path'] = os.path.join(
-            self.params['model_dir'], "{}.npz".format(self.params["experiment"])
-        )
-        self.num_gpus = count_gpus()
-        print("Training on", self.num_gpus, "GPUs.")
-
-        self.train_callbacks = get_callbacks(
-            self.params['model_path'],
-            tensorboard_log_dir=self.params['log_dir'],
-            save_weights_only=self.num_gpus >= 2,
-            monitor="val_loss",
-            verbose=1,
-        )
-        self.train_callbacks.append(self.lr_sched)
         if "weight_decay" in self.params.keys():
             self.add_weight_decay()
         self.model.compile(loss=loss, optimizer=self.optimizer)
 
+    @staticmethod
+    @tf.function
+    def train_step(model, x, y):
+        """Trains the model for one step"""
+        with tf.GradientTape() as tape:
+            y_pred = model(x, training=True)
+            loss = model.compute_loss(x, y, y_pred)
+        gradients = tape.gradient(loss, model.trainable_variables)
+        model.optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+        return loss
+
+    def distributed_train_step(self, model, x, y):
+        """Trains the model for one step on multiple GPUs"""
+        loss = self.strategy.run(self.train_step, args=(model, x, y))
+        return self.strategy.reduce(tf.distribute.ReduceOp.SUM, loss, axis=None)
+
     def train(self):
         """Calls prep functions and starts training loops"""
+        print("Training on", self.num_gpus, "GPUs.")
         self.prep_data()
-        self.prep_model()
-        #
         validation_dataset = self.validation_dataset.map(
-                self.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
+            self.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
         )
-
-        with open(os.path.join(self.params['model_dir'], "params.toml"), "w") as f:
+        if self.num_gpus > 1:
+            # set up distributed training
+            self.strategy = tf.distribute.MirroredStrategy()
+            self.train_dataset = self.strategy.experimental_distribute_dataset(self.train_dataset)
+            with self.strategy.scope():
+                self.prep_model()
+                checkpoint = tf.train.Checkpoint(optimizer=self.optimizer, model=self.model)
+            print("Distributed training on {} devices".format(self.strategy.num_replicas_in_sync))
+            train_step = self.distributed_train_step
+        else:
+            self.prep_model()
+            train_step = self.train_step
+        #
+        with open(os.path.join(self.params["model_dir"], "params.toml"), "w") as f:
             toml.dump(self.params, f)
-        self.loss_history = self.model.fit(
-            self.train_dataset,
-            epochs=self.params["num_epochs"],
-            validation_data=validation_dataset,
-            callbacks=self.train_callbacks,
-        )
+
+        summary_writer = tf.summary.create_file_writer(self.params["log_dir"])
+        step = 0
+        val_loss_history = []
+        train_loss_tmp = []
+        while step < self.params["num_steps"]:
+            for x, y in tqdm(self.train_dataset):
+                train_loss = train_step(self.model, x, y)
+                train_loss_tmp.append(train_loss)
+                step += 1
+                # write train loss and lr to tensorboard
+                if step % 10 == 0:
+                    with summary_writer.as_default():
+                        tf.summary.scalar("train_loss", tf.reduce_mean(train_loss_tmp), step=step)
+                        tf.summary.scalar(
+                            "lr", self.model.optimizer._decayed_lr(tf.float32), step=step
+                        )
+                        train_loss_tmp = []
+                    print("Step: {step}, loss {loss}".format(step=step, loss=train_loss))
+                if step % self.params["snap_steps"] == 0:
+                    print("Saving training snapshots")
+                    if self.num_gpus > 1:
+                        x = self.strategy.experimental_local_results(x)[0]
+                        y_pred = self.model(x, training=False)
+                        y_pred = self.strategy.experimental_local_results(y_pred)[0]
+                        y = self.strategy.experimental_local_results(y)[0]
+                    else:
+                        y_pred = self.model(x, training=False)
+                    with summary_writer.as_default():
+                        tf.summary.image(
+                            "x_0 | y | y_pred",
+                            tf.concat([
+                                x[:1, ..., :1],
+                                x[:1, ..., 1:2] * 0.25 + tf.cast(y[:1, ..., :1], tf.float32),
+                                y_pred[:1, ..., :1]],  axis=0,
+                            ),
+                            step=step,
+                        )
+                # run validation and write to tensorboard
+                if step % self.params["val_steps"] == 0:
+                    print("Running validation...")
+                    val_loss = self.model.evaluate(validation_dataset, verbose=1)
+                    print("Validation loss:", val_loss)
+                    val_loss_history.append(val_loss)
+                    with summary_writer.as_default():
+                        tf.summary.scalar("val_loss", val_loss, step=step)
+                    if val_loss <= tf.reduce_min(val_loss_history):
+                        print("Saving model to", self.params["model_path"])
+                        self.model.save_weights(self.params["model_path"])
+                    if step > self.params["num_steps"]:
+                        break
 
     def prep_loss(self):
         """Prepares the loss function for the model
@@ -146,7 +213,8 @@ class ModelBuilder:
             loss_fn (function): Loss function for the model
         """
         loss_fn = Loss(
-            self.params["loss_fn"], self.params["loss_selective_masking"],
+            self.params["loss_fn"],
+            self.params["loss_selective_masking"],
             **self.params["loss_kwargs"]
         )
         return loss_fn
@@ -202,9 +270,7 @@ class ModelBuilder:
             loss (float):
                 Loss on the validation dataset
         """
-        val_dset = val_dset.map(
-                self.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
-        )
+        val_dset = val_dset.map(self.prep_batches, num_parallel_calls=tf.data.AUTOTUNE)
         loss = self.model.evaluate(val_dset)
         return loss
 
@@ -271,18 +337,21 @@ class ModelBuilder:
             return None
         alpha = self.params["weight_decay"]
         for layer in self.model.layers:
-            if isinstance(layer, tf.keras.layers.Conv2D) or \
-                    isinstance(layer, tf.keras.layers.Dense):
+            if isinstance(layer, tf.keras.layers.Conv2D) or isinstance(
+                layer, tf.keras.layers.Dense
+            ):
                 layer.add_loss(lambda layer=layer: tf.keras.regularizers.l2(alpha)(layer.kernel))
-            if hasattr(layer, 'bias_regularizer') and layer.use_bias:
+            if hasattr(layer, "bias_regularizer") and layer.use_bias:
                 layer.add_loss(lambda layer=layer: tf.keras.regularizers.l2(alpha)(layer.bias))
 
 
 if __name__ == "__main__":
-    print('CUDA_VISIBLE_DEVICES: ' + str(os.getenv("CUDA_VISIBLE_DEVICES")))
+    print("CUDA_VISIBLE_DEVICES: " + str(os.getenv("CUDA_VISIBLE_DEVICES")))
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--params", type=str, default="cell_classification/configs/params.toml",
+        "--params",
+        type=str,
+        default="cell_classification/configs/params.toml",
     )
     args = parser.parse_args()
     params = toml.load(args.params)
