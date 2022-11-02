@@ -28,6 +28,8 @@ contrast_max = 1.2
 batch_size = 4
 loss_fn = "BinaryCrossentropy"
 loss_selective_masking = true
+quantile = 0.3
+confidence_thresholds = [0.1, 0.9]
 [loss_kwargs]
 from_logits = false
 label_smoothing = 0.1

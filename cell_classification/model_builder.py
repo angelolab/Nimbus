@@ -135,9 +135,6 @@ class ModelBuilder:
         """Calls prep functions and starts training loops"""
         print("Training on", self.num_gpus, "GPUs.")
         self.prep_data()
-        validation_dataset = self.validation_dataset.map(
-            self.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
-        )
         if self.num_gpus > 1:
             # set up distributed training
             self.strategy = tf.distribute.MirroredStrategy()
@@ -154,56 +151,71 @@ class ModelBuilder:
         with open(os.path.join(self.params["model_dir"], "params.toml"), "w") as f:
             toml.dump(self.params, f)
 
-        summary_writer = tf.summary.create_file_writer(self.params["log_dir"])
-        step = 0
-        val_loss_history = []
-        train_loss_tmp = []
-        while step < self.params["num_steps"]:
+        self.summary_writer = tf.summary.create_file_writer(self.params["log_dir"])
+        self.step = 0
+        self.val_loss_history = []
+        self.train_loss_tmp = []
+        while self.step < self.params["num_steps"]:
             for x, y in tqdm(self.train_dataset):
                 train_loss = train_step(self.model, x, y)
-                train_loss_tmp.append(train_loss)
-                step += 1
-                # write train loss and lr to tensorboard
-                if step % 10 == 0:
-                    with summary_writer.as_default():
-                        tf.summary.scalar("train_loss", tf.reduce_mean(train_loss_tmp), step=step)
-                        tf.summary.scalar(
-                            "lr", self.model.optimizer._decayed_lr(tf.float32), step=step
-                        )
-                        train_loss_tmp = []
-                    print("Step: {step}, loss {loss}".format(step=step, loss=train_loss))
-                if step % self.params["snap_steps"] == 0:
-                    print("Saving training snapshots")
-                    if self.num_gpus > 1:
-                        x = self.strategy.experimental_local_results(x)[0]
-                        y_pred = self.model(x, training=False)
-                        y_pred = self.strategy.experimental_local_results(y_pred)[0]
-                        y = self.strategy.experimental_local_results(y)[0]
-                    else:
-                        y_pred = self.model(x, training=False)
-                    with summary_writer.as_default():
-                        tf.summary.image(
-                            "x_0 | y | y_pred",
-                            tf.concat([
-                                x[:1, ..., :1],
-                                x[:1, ..., 1:2] * 0.25 + tf.cast(y[:1, ..., :1], tf.float32),
-                                y_pred[:1, ..., :1]],  axis=0,
-                            ),
-                            step=step,
-                        )
-                # run validation and write to tensorboard
-                if step % self.params["val_steps"] == 0:
-                    print("Running validation...")
-                    val_loss = self.model.evaluate(validation_dataset, verbose=1)
-                    print("Validation loss:", val_loss)
-                    val_loss_history.append(val_loss)
-                    with summary_writer.as_default():
-                        tf.summary.scalar("val_loss", val_loss, step=step)
-                    if val_loss <= tf.reduce_min(val_loss_history):
-                        print("Saving model to", self.params["model_path"])
-                        self.model.save_weights(self.params["model_path"])
-                    if step > self.params["num_steps"]:
-                        break
+                self.train_loss_tmp.append(train_loss)
+                self.step += 1
+                self.tensorboard_callbacks(x, y)
+                if self.step > self.params["num_steps"]:
+                    break
+
+    def tensorboard_callbacks(self, x, y):
+        """Logs training metrics to Tensorboard
+        Args:
+            x (tf.Tensor): input image
+            y (tf.Tensor): ground truth labels
+        """
+        if self.step % 10 == 0:
+            with self.summary_writer.as_default():
+                tf.summary.scalar(
+                    "train_loss", tf.reduce_mean(self.train_loss_tmp), step=self.step
+                )
+                tf.summary.scalar(
+                    "lr", self.model.optimizer._decayed_lr(tf.float32), step=self.step
+                )
+            print(
+                "Step: {step}, loss {loss}".format(
+                    step=self.step, loss=tf.reduce_mean(self.train_loss_tmp))
+            )
+            self.train_loss_tmp = []
+        if self.step % self.params["snap_steps"] == 0:
+            print("Saving training snapshots")
+            if self.num_gpus > 1:
+                x = self.strategy.experimental_local_results(x)[0]
+                y_pred = self.model(x, training=False)
+                y_pred = self.strategy.experimental_local_results(y_pred)[0]
+                y = self.strategy.experimental_local_results(y)[0]
+            else:
+                y_pred = self.model(x, training=False)
+            with self.summary_writer.as_default():
+                tf.summary.image(
+                    "x_0 | y | y_pred",
+                    tf.concat([
+                        x[:1, ..., :1],
+                        x[:1, ..., 1:2] * 0.25 + tf.cast(y[:1, ..., :1], tf.float32),
+                        y_pred[:1, ..., :1]],  axis=0,
+                    ),
+                    step=self.step,
+                )
+        # run validation and write to tensorboard
+        if self.step % self.params["val_steps"] == 0:
+            print("Running validation...")
+            validation_dataset = self.validation_dataset.map(
+                self.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
+            )
+            val_loss = self.model.evaluate(validation_dataset, verbose=1)
+            print("Validation loss:", val_loss)
+            self.val_loss_history.append(val_loss)
+            with self.summary_writer.as_default():
+                tf.summary.scalar("val_loss", val_loss, step=self.step)
+            if val_loss <= tf.reduce_min(self.val_loss_history):
+                print("Saving model to", self.params["model_path"])
+                self.model.save_weights(self.params["model_path"])
 
     def prep_loss(self):
         """Prepares the loss function for the model

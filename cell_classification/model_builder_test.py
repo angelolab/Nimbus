@@ -138,6 +138,39 @@ def test_train():
         trainer = ModelBuilder(params)
         trainer.train()
 
+        # check params.toml is dumped to file and contains the created paths
+        assert "params.toml" in os.listdir(trainer.params["model_dir"])
+        loaded_params = toml.load(os.path.join(trainer.params["model_dir"], "params.toml"))
+        for key in ["model_dir", "log_dir", "model_path"]:
+            assert key in list(loaded_params.keys())
+
+        # check if model can be loaded from file
+        trainer.model = None
+        trainer.load_model(trainer.params["model_path"])
+        assert isinstance(trainer.model, tf.keras.Model)
+
+
+def test_tensorboard_callbacks():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
+        data_prep.tf_record_path = temp_dir
+        data_prep.make_tf_record()
+        tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
+        params = toml.load("cell_classification/configs/params.toml")
+        params["record_path"] = tf_record_path
+        params["path"] = temp_dir
+        params["experiment"] = "test"
+        params["num_steps"] = 6
+        params["num_validation"] = 2
+        params["batch_size"] = 2
+        params["test"] = True
+        params["weight_decay"] = 1e-4
+        params["snap_steps"] = 5
+        params["val_steps"] = 5
+
+        trainer = ModelBuilder(params)
+        trainer.train()
+
         # check if loss history is written to file
         assert "tfevents" in os.listdir(trainer.params["log_dir"])[0]
 
@@ -145,22 +178,6 @@ def test_train():
         assert os.path.split(trainer.params["model_path"])[-1] in os.listdir(
             trainer.params["model_dir"]
         )
-
-        # check params.toml is dumped to file and contains the created paths
-        assert "params.toml" in os.listdir(trainer.params["model_dir"])
-        loaded_params = toml.load(os.path.join(trainer.params["model_dir"], "params.toml"))
-        for key in ["model_dir", "log_dir", "model_path"]:
-            assert key in list(loaded_params.keys())
-
-        # check if model is saved to file
-        assert os.path.split(trainer.params["model_path"])[-1] in os.listdir(
-            trainer.params["model_dir"]
-        )
-
-        # check if model can be loaded from file
-        trainer.model = None
-        trainer.load_model(trainer.params["model_path"])
-        assert isinstance(trainer.model, tf.keras.Model)
 
 
 def test_predict():
