@@ -43,31 +43,32 @@ def plot_overlay(example, save_dir=None, save_file=None, dpi=160):
             If save_dir specified, specify a file name you wish to save to.
             Ignored if save_dir is None
     """
-    marker_boundaries = segmentation_to_boundaries(example["marker_activity_mask"].numpy())
-    instance_mask = example["instance_mask"].numpy()
-    instance_mask[example["marker_activity_mask"].numpy() > 0] = 0
-    other_boundaries = segmentation_to_boundaries(instance_mask) > 0
+    marker_activity_mask = example["marker_activity_mask"].numpy()
+    positives = marker_activity_mask == 1
+    undetermined = marker_activity_mask == 2
+    positive_boundaries = segmentation_to_boundaries(positives)
+    undetermined_boundaries = segmentation_to_boundaries(undetermined)
+    binary_mask = example["binary_mask"].numpy()
+    negative_boundaries = segmentation_to_boundaries(binary_mask) > 0
     img = np.repeat(example["mplex_img"], 3, axis=-1)
-    img[np.squeeze(other_boundaries)] = 0.2
-    colors = [(0, 0, 0), (0, 1, 0), (0, 0, 1), (1, 0, 0)]
-    for i, val in enumerate(np.unique(marker_boundaries)):
-        if val == 0:
-            continue
-        img[np.squeeze(marker_boundaries) == val] = colors[i]
-    pos = mpatches.Patch(color=(0, 1, 0), label="Positive")
-    neg = mpatches.Patch(color=(0, 0, 0), label="Negative")
-    und = mpatches.Patch(color=(0, 0, 1), label="Undetermined")
-    oth = mpatches.Patch(color=(0.4, 0.4, 0.4), label="Others")
+    img[np.squeeze(negative_boundaries)] = (1, 0, 0)
+    img[np.squeeze(positive_boundaries)] = [0, 1, 0]
+    img[np.squeeze(undetermined_boundaries)] = [0, 0, 1]
+    #
     ax = plt.subplot(111)
+    pos = mpatches.Patch(color=(0, 1, 0), label="Positive")
+    neg = mpatches.Patch(color=(1, 0, 0), label="Negative")
+    und = mpatches.Patch(color=(0, 0, 1), label="Undetermined")
     ax.imshow(img.clip(0, 1), interpolation="nearest")
     box = ax.get_position()
     ax.set_position([box.x0, box.y0 + box.height * 0.1, box.width, box.height * 0.9])
-    plt.legend(
-        handles=[pos, neg, und, oth],
-        loc="upper center",
-        bbox_to_anchor=(0.5, -0.05),
-        fancybox=True,
-        ncol=3,
+    ax.title.set_text(example["marker"])
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.legend(
+        handles=[pos, neg, und],
+        loc="lower right",
+        fancybox=False,
     )
     plt.tight_layout()
     if save_dir:
@@ -307,10 +308,10 @@ if __name__ == "__main__":
     parser.add_argument(
         "--record_path",
         type=str,
-        default="C:/Users/lorenz/Downloads/Lorenz_example_data/TNBC.tfrecord",
+        default="C:/Users/lorenz/Desktop/angelo_lab/TONIC/TONIC.tfrecord",
     )
     parser.add_argument(
-        "--save_dir", type=str, default="C:/Users/lorenz/Downloads/Lorenz_example_data/plots"
+        "--save_dir", type=str, default="C:/Users/lorenz/Desktop/angelo_lab/TONIC/plots"
     )
     parser.add_argument("--dpi", type=float, default=160)
     parser.add_argument("--plot_overlay", default=True)
@@ -321,7 +322,7 @@ if __name__ == "__main__":
     dpi = args.dpi
     train_ds = tf.data.TFRecordDataset(path)
     if args.shuffle:
-        train_ds = train_ds.shuffle(300)
+        train_ds = train_ds.shuffle(1500)
     for i, record in tqdm(enumerate(train_ds)):
         example_encoded = tf.io.parse_single_example(record, feature_description)
         example = parse_dict(example_encoded)
@@ -329,11 +330,11 @@ if __name__ == "__main__":
             example,
             dpi=dpi,
             save_dir=save_dir,
-            save_file=f"{example['folder_name']}_{example['marker']}_overlay_{i}.png",
+            save_file=f"{example['marker']}_{example['folder_name']}_overlay_{i}.png",
         )
-        plot_together(
-            example,
-            dpi=dpi,
-            save_dir=save_dir,
-            save_file=f"{example['folder_name']}_{example['marker']}_together_{i}.png",
-        )
+        # plot_together(
+        #     example,
+        #     dpi=dpi,
+        #     save_dir=save_dir,
+        #     save_file=f"{example['folder_name']}_{example['marker']}_together_{i}.png",
+        # )

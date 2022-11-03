@@ -3,6 +3,7 @@ from promix_naive import PromixNaive
 import toml
 import tempfile
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 import os
 
@@ -43,8 +44,8 @@ def test_matched_high_confidence_selection_thresholds():
     params = toml.load("cell_classification/configs/params.toml")
     params["test"] = True
     trainer = PromixNaive(params)
-    thresholds = trainer.matched_high_confidence_selection_thresholds()
-
+    trainer.matched_high_confidence_selection_thresholds()
+    thresholds = trainer.confidence_loss_thresholds
     # check that the output has the right dimension
     assert len(thresholds) == 2
     assert thresholds["positive"] > 0.0
@@ -107,13 +108,106 @@ def test_prep_data():
         assert isinstance(trainer.train_dataset, tf.data.Dataset)
 
 
+def prepare_activity_df():
+    activity_df_list = []
+    for i in range(4):
+        activity_df = pd.DataFrame(
+            {
+                "labels": np.array([1, 2, 5, 7, 9, 11], dtype=np.uint16),
+                "activity": [1, 0, 0, 0, 0, 1],
+                "cell_type": ["T cell", "B cell", "T cell", "B cell", "T cell", "B cell"],
+                "sample": [str(i)] * 6,
+                "imaging_platform": ["test"] * 6,
+                "dataset": ["test"] * 6,
+                "marker": ["CD4"] * 6 if i % 2 == 0 else "CD8",
+                "prediction": [0.9, 0.1, 0.1, 0.7, 0.7, 0.1],
+            }
+        )
+        activity_df_list.append(activity_df)
+    return activity_df_list
+
+
 def test_class_wise_loss_selection():
-    pass
+    params = toml.load("cell_classification/configs/params.toml")
+    params["test"] = True
+    trainer = PromixNaive(params)
+    activity_df_list = prepare_activity_df()
+    df = activity_df_list[0]
+    mark = df["marker"][0]
+
+    trainer.class_wise_loss_quantiles[mark] = {"positive": 0.5, "negative": 0.5}
+    df["loss"] = df.activity * df.prediction + (1 - df.activity) * (1 - df.prediction)
+    positive_df = df[df["activity"] == 1]
+    negative_df = df[df["activity"] == 0]
+    selected_subset = trainer.class_wise_loss_selection(positive_df, negative_df, mark)
+
+    # check that the output has the right dimension
+    assert len(selected_subset) == 2
+    assert len(selected_subset[0]) == 1
+
+    # check that the output is correct and only those cells are selected that have a loss
+    # smaller than the threshold
+    assert selected_subset[0].equals(
+        df[df["activity"] == 1].loc[
+            df["loss"] <= trainer.class_wise_loss_quantiles[mark]["positive"]
+        ]
+    )
+    assert selected_subset[1].equals(
+        df[df["activity"] == 0].loc[
+            df["loss"] <= trainer.class_wise_loss_quantiles[mark]["negative"]
+        ]
+    )
+
+    # check if quantiles got updated
+    assert trainer.class_wise_loss_quantiles[mark]["positive"] != 0.5
+    assert trainer.class_wise_loss_quantiles[mark]["negative"] != 0.5
 
 
 def test_matched_high_confidence_selection():
-    pass
+    params = toml.load("cell_classification/configs/params.toml")
+    params["test"] = True
+    trainer = PromixNaive(params)
+    activity_df_list = prepare_activity_df()
+    df = activity_df_list[0]
+    df["loss"] = df.activity * df.prediction + (1 - df.activity) * (1 - df.prediction)
+    positive_df = df[df["activity"] == 1]
+    negative_df = df[df["activity"] == 0]
+    mark = df["marker"][0]
+    trainer.matched_high_confidence_selection_thresholds()
+    selected_subset = trainer.matched_high_confidence_selection(positive_df, negative_df)
+    df = pd.concat(selected_subset)
+
+    # check that the output has the right dimension
+    assert len(df) == 1
+
+    # check that the output is correct and only those cells are selected that have a loss
+    # smaller than the threshold
+    gt_activity = "positive" if df["activity"].values[0] == 1 else "negative"
+    assert (df.loss.values[0] <= trainer.confidence_loss_thresholds[gt_activity]).numpy()
 
 
 def test_batchwise_loss_selection():
-    pass
+    params = toml.load("cell_classification/configs/params.toml")
+    params["test"] = True
+    trainer = PromixNaive(params)
+    trainer.matched_high_confidence_selection_thresholds()
+    activity_df_list = prepare_activity_df()
+    instance_mask = np.zeros([256, 256], dtype=np.uint8)
+    i = 1
+    for h in range(0, 260, 20):
+        for w in range(0, 260, 20):
+            instance_mask[h: h + 10, w: w + 10] = i
+            i += 1
+    dfs = activity_df_list[:2]
+    mark = [tf.constant(str(df["marker"][0]).encode()) for df in dfs]
+    for df in dfs:
+        df["loss"] = df.activity * df.prediction + (1 - df.activity) * (1 - df.prediction)
+    instance_mask = instance_mask[np.newaxis, ..., np.newaxis]
+    instance_mask = np.concatenate([instance_mask, instance_mask], axis=0)
+    loss_mask = trainer.batchwise_loss_selection(dfs, instance_mask, mark)
+
+    # check that the output has the right dimension
+    assert list(loss_mask.shape) == [2, 256, 256]
+
+    # check that they are equal
+    assert np.array_equal(loss_mask[0], loss_mask[1])

@@ -30,6 +30,7 @@ loss_fn = "BinaryCrossentropy"
 loss_selective_masking = true
 quantile = 0.3
 confidence_thresholds = [0.1, 0.9]
+ema = 0.01
 [loss_kwargs]
 from_logits = false
 label_smoothing = 0.1

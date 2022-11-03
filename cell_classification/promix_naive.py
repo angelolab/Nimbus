@@ -7,10 +7,10 @@ from tensorflow.keras.optimizers import SGD, Adam
 from semantic_head import create_semantic_head
 from model_builder import ModelBuilder
 import tensorflow as tf
-from time import time
 from tqdm import tqdm
 import pandas as pd
 import numpy as np
+import argparse
 import toml
 import os
 
@@ -30,7 +30,7 @@ class PromixNaive(ModelBuilder):
         targets = tf.constant(np.array([[0, 1]]).transpose())
         y_pred = tf.constant(np.array([[neg_thresh, pos_thresh]]).transpose())
         loss = self.loss_fn(targets, y_pred)
-        return {"negative": loss.numpy()[0], "positive": loss.numpy()[1]}
+        self.confidence_loss_thresholds = {"positive": loss[0], "negative": loss[1]}
 
     def prep_data(self):
         """Prepares training and validation data"""
@@ -85,7 +85,7 @@ class PromixNaive(ModelBuilder):
         # initialize data and model
         self.prep_data()
         self.prep_model()
-        self.confidence_loss_thresholds = self.matched_high_confidence_selection_thresholds()
+        self.matched_high_confidence_selection_thresholds()
         train_step = self.train_step
 
         with open(os.path.join(self.params["model_dir"], "params.toml"), "w") as f:
@@ -126,11 +126,12 @@ class PromixNaive(ModelBuilder):
                 loss_mask = self.batchwise_loss_selection(
                     batch["activity_df"], batch["instance_mask"], batch["marker"]
                 )
-                loss_mask = tf.cast(loss_mask, tf.float32)
+                loss_mask *= tf.cast(tf.squeeze(batch["binary_mask"], -1), tf.float32)
                 # augment batches and do train_step
 
                 def aug_fn(x, y, z):
                     return (x, y, z)
+
                 train_loss = train_step(
                     self.model, self.optimizer, self.loss_fn, aug_fn, loss_mask, x, y
                 )
@@ -139,12 +140,33 @@ class PromixNaive(ModelBuilder):
                 self.tensorboard_callbacks(x, y)
                 if self.step > self.params["num_steps"]:
                     break
-                # save loss_mask
+                # custom tensorboard callbacks
                 if self.step % self.params["snap_steps"] == 0:
                     with self.summary_writer.as_default():
                         tf.summary.image(
-                            "loss_mask", tf.expand_dims(loss_mask, axis=-1), step=self.step
+                            "loss_mask",
+                            tf.cast(tf.expand_dims(loss_mask[:1, ...], axis=-1), tf.float32)
+                            + x[:1, ..., 1:2] * 0.25,
+                            step=self.step,
                         )
+                        for key in list(self.class_wise_loss_quantiles.keys()):
+                            for class_ in ["positive", "negative"]:
+                                tf.summary.scalar(
+                                    key + "_" + class_[:3],
+                                    self.class_wise_loss_quantiles[key][class_],
+                                    step=self.step,
+                                )
+                    # save self.class_wise_loss_quantiles as toml
+                    with open(
+                        os.path.join(self.params["log_dir"], "loss_quantiles.toml"), "w"
+                    ) as f:
+                        toml.dump(self.class_wise_loss_quantiles, f)
+                if self.step % self.params["val_steps"] == 0:
+                    model_fname = os.path.join(
+                        self.params["model_dir"], "checkpoint_{}.h5".format(self.step)
+                    )
+                    print("Saving model to", model_fname)
+                    self.model.save_weights(model_fname)
 
     @staticmethod
     @tf.autograph.experimental.do_not_convert
@@ -190,7 +212,10 @@ class PromixNaive(ModelBuilder):
             # loss selection methods
             selected_subset += self.class_wise_loss_selection(positive_df, negative_df, mark)
             selected_subset += self.matched_high_confidence_selection(positive_df, negative_df)
-            selected_subset = pd.concat(selected_subset)
+            if selected_subset:
+                selected_subset = pd.concat(selected_subset)
+            else:
+                selected_subset = pd.DataFrame(columns=["labels"])
             positive_mask = tf.reduce_any(
                 tf.equal(mask, np.unique(selected_subset.labels.values)), axis=-1
             )
@@ -255,3 +280,18 @@ class PromixNaive(ModelBuilder):
                 negative_df[negative_df.loss < self.confidence_loss_thresholds["negative"]]
             )
         return selected_subset
+
+
+if __name__ == "__main__":
+    print("CUDA_VISIBLE_DEVICES: " + str(os.getenv("CUDA_VISIBLE_DEVICES")))
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--params",
+        type=str,
+        default="cell_classification/configs/params.toml",
+    )
+    args = parser.parse_args()
+    params = toml.load(args.params)
+    trainer = PromixNaive(params)
+    trainer.load_model("ex_3_fulldata/ex_3_fulldata.h5")
+    trainer.train()
