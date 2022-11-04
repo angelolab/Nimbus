@@ -7,6 +7,7 @@ import os
 from metrics import calc_roc, calc_metrics, average_roc, HDF5Loader
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 
 
 def make_pred_list():
@@ -97,17 +98,13 @@ def test_HDF5Generator():
         params["record_path"] = tf_record_path
         params["path"] = temp_dir
         params["experiment"] = "test"
-        params["num_epochs"] = 0
+        params["num_steps"] = 2
         params["num_validation"] = 2
-        params["snap_steps"] = 10
-        params["val_steps"] = 10
+        params["snap_steps"] = 100
+        params["val_steps"] = 100
         model = ModelBuilder(params)
         model.train()
-        model.params["eval"] = True
-        model.prep_data()
-        val_dset = iter(model.validation_dataset)
-
-        single_example_list = model.predict_dataset(val_dset, save_predictions=True)
+        model.predict_dataset(model.validation_dataset, save_predictions=True)
         generator = HDF5Loader(model.params['eval_dir'])
 
         # check if generator has the right number of items
@@ -116,4 +113,4 @@ def test_HDF5Generator():
         # check if generator returns the right items
         for sample in generator:
             assert isinstance(sample, dict)
-            assert set(list(sample.keys())) == set(list(single_example_list[0].keys()))
+            assert len(list(sample.keys())) == 11
