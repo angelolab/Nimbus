@@ -4,7 +4,7 @@ from imgaug.augmentables.segmaps import SegmentationMapsOnImage
 from imgaug.augmentables.batches import Batch
 import numpy as np
 import tensorflow as tf
-
+from keras.layers.preprocessing.image_preprocessing import transform, get_zoom_matrix
 
 def augment_images(images, masks, augmentation_pipeline):
     """
@@ -137,3 +137,285 @@ def py_aug(batch, tf_aug):
     batch['binary_mask'] = binary_mask
     batch['marker_activity_mask'] = marker_activity_mask
     return batch
+
+
+class Flip(tf.Module):
+    def __init__(self, prob=0.5):
+        super(Flip, self).__init__()
+        self.prob = prob
+
+    def __call__(self, image, labels):
+        if tf.random.uniform(()) < self.prob:
+            image = tf.reverse(image, axis=[1])
+            labels = tf.reverse(labels, axis=[1])
+        if tf.random.uniform(()) < self.prob:
+            image = tf.reverse(image, axis=[2])
+            labels = tf.reverse(labels, axis=[2])
+        return image, labels
+
+class Rot90(tf.Module):
+    def __init__(self, prob=0.5, rotate_count=3):
+        super(Rot90, self).__init__()
+        self.prob = prob
+        self.rotate_count = rotate_count
+
+    def __call__(self, image, labels):
+        if tf.random.uniform(()) < self.prob:
+            k = tf.random.uniform((), minval=0, maxval=self.rotate_count, dtype=tf.int32)
+            image = tf.image.rot90(image, k)
+            labels = tf.image.rot90(labels, k)
+        return image, labels
+
+class GaussianNoise(tf.Module):
+    def __init__(self, prob=0.5, min_std=0.1, max_std=0.2):
+        super(GaussianNoise, self).__init__()
+        self.prob = prob
+        self.min_std = min_std
+        self.max_std = max_std
+
+    def __call__(self, image, labels):
+        if tf.random.uniform(()) < self.prob:
+            noise = tf.random.normal(
+                shape=tf.shape(image), mean=0.0, dtype=tf.float32,
+                stddev=tf.random.uniform((), self.min_std, self.max_std),
+            )
+            image += noise
+        return image, labels
+
+class GaussianBlur(tf.Module):
+    """ Gaussian blur augmentation"""
+    def __init__(self, prob=0.5, min_std=0.1, max_std=0.2):
+        """
+        Args:
+            prob (float):
+                The probability of applying the augmentation
+            min_std (float):
+                The minimum standard deviation of the gaussian filter
+            max_std (float):
+                The maximum standard deviation of the gaussian filter
+        """
+        super(GaussianBlur, self).__init__()
+        self.prob = prob
+        self.min_std = min_std
+        self.max_std = max_std
+
+    def gaussian_kernel(self, sigma, n_channels, size=5):
+        """Returns 2D Gaussian kernel for convolutions.
+        Args:
+            sigma (float):
+                Standard deviation of the gaussian filter
+            n_channels (int):
+                The number of channels of the image
+            size (int):
+                The size of the kernel
+        Returns:
+            tf.Tensor:
+                The gaussian kernel
+        """
+        x = tf.range(-size, size + 1, dtype=tf.float32)
+        g = tf.math.exp(-(x ** 2) / (2.0 * sigma ** 2))
+        g_norm2d = tf.sqrt(tf.reduce_sum(g ** 2))
+        g_kernel = tf.tensordot(g, g, axes=0) / (g_norm2d ** 2)
+        g_kernel = tf.expand_dims(g_kernel, axis=-1)
+        g_kernel = tf.expand_dims(g_kernel, axis=-1)
+        g_kernel = tf.tile(g_kernel, [1, 1, n_channels, 1])
+        return g_kernel
+
+    def __call__(self, image, labels):
+        """ Applies gaussian blurring
+        Args:
+            image (tf.Tensor):
+                The image to blur
+            labels (tf.Tensor):
+                The labels
+        Returns:
+            tf.Tensor:
+                The blurred image
+            tf.Tensor:
+                The labels
+        """
+        if tf.random.uniform(()) < self.prob:
+            sigma = tf.random.uniform((), self.min_std, self.max_std)
+            kernel = self.gaussian_kernel(sigma, n_channels = tf.shape(image)[-1])
+            image = tf.nn.depthwise_conv2d(
+                image, kernel, strides=[1, 1, 1, 1], padding='SAME'
+            )
+        return image, labels
+
+class Zoom(tf.Module):
+    """ Zoom augmentation"""
+    def __init__(self, prob=0.5, min_zoom=0.8, max_zoom=1.2, fill_mode='constant'):
+        """
+        Args:
+            prob (float):
+                The probability of applying the augmentation
+            min_zoom (float):
+                The minimum zoom factor
+            max_zoom (float):
+                The maximum zoom factor
+        """
+        super(Zoom, self).__init__()
+        self.prob = prob
+        self.min_zoom = min_zoom
+        self.max_zoom = max_zoom
+        self.fill_mode = fill_mode
+
+    def __call__(self, image, labels):
+        """ Applies zoom
+        Args:
+            image (tf.Tensor):
+                The image to zoom
+            labels (tf.Tensor):
+                The labels
+        Returns:
+            tf.Tensor:
+                The zoomed image
+            tf.Tensor:
+                The labels
+        """
+        if tf.random.uniform(()) < self.prob:
+            zoom_factor = tf.random.uniform([1], self.min_zoom, self.max_zoom)
+            zooms = tf.expand_dims(
+                tf.cast(
+                    tf.concat([zoom_factor, zoom_factor], axis=0), dtype=tf.float32
+                ),0
+            )
+            h, w, _ = image.shape
+            image = transform(
+                tf.expand_dims(image, 0),
+                get_zoom_matrix(zooms, h, w),
+                fill_mode=self.fill_mode,
+                interpolation="bilinear",
+            )
+            labels = transform(
+                tf.expand_dims(labels, 0),
+                get_zoom_matrix(zooms, h, w),
+                fill_mode=self.fill_mode,
+                interpolation="nearest",
+            )
+        return tf.squeeze(image,0), tf.squeeze(labels, 0)
+
+class LinearContrast(tf.Module):
+    """ Linear contrast augmentation"""
+    def __init__(self, prob=0.5, min_factor=0.5, max_factor=1.5):
+        """
+        Args:
+            prob (float):
+            The probability of applying the augmentation
+        min_factor (float):
+            The minimum contrast factor
+        max_factor (float):
+            The maximum contrast factor
+        """
+        super(LinearContrast, self).__init__()
+        self.prob = prob
+        self.min_factor = min_factor
+        self.max_factor = max_factor
+
+    def __call__(self, image, labels):
+        """ Apply linear contrast augmentation
+        Args:
+            image (tf.Tensor):
+                The image to augment
+                labels (tf.Tensor):
+                The labels to augment
+        Returns:
+            tf.Tensor:
+                The augmented image
+            tf.Tensor:
+                The augmented labels
+        """
+        if tf.random.uniform(()) < self.prob:
+            factor = tf.random.uniform((), self.min_factor, self.max_factor)
+            image *= factor
+        return image, labels
+
+class Augmenter(tf.Module):
+    """Augmenter class to apply a list of augmentations to a batch of images and labels"""
+    def __init__(self, augmentations, parallel_calls=4):
+        """Augmentation module
+        Args:
+            augmentations (list):
+                List of augmentation functions
+        """
+        super(Augmenter, self).__init__()
+        self.augmentations = augmentations
+        self.parallel_calls = parallel_calls
+
+    def aug_sample(self, sample):
+        """Apply augmentations to a single image and label
+        Args:
+            image (tf.Tensor):
+                The image to augment
+            labels (tf.Tensor):
+                The labels to augment
+        Returns:
+            tf.Tensor:
+                The augmented image
+            tf.Tensor:
+                The augmented labels
+        """
+        image, labels = sample
+        for aug in self.augmentations:
+            image, labels = aug(image, labels)
+        return image, labels
+
+    def __call__(self, image_batch, labels_batch):
+        """Apply the augmentations to a batch of images and labels
+        Args:
+            image_batch (tf.Tensor):
+                The batch of images to augment
+            labels_batch (tf.Tensor):
+                The batch of labels to augment
+        Returns:
+            tf.Tensor:
+                The augmented batch of images
+            tf.Tensor:
+                The augmented batch of labels
+        """
+        image_batch, labels_batch = tf.map_fn(
+            self.aug_sample,
+            elems=(image_batch, labels_batch),
+            dtype=(tf.float32, tf.int32),
+            parallel_iterations=self.parallel_calls,
+        )
+        return image_batch, labels_batch
+
+def prepare_keras_aug(params, parallel_calls=4):
+    """ Prepare the augmentation pipeline for use within keras
+    Args:
+        params (dict):
+            The parameters for the augmentation
+    Returns:
+        keras_cv.layers.Augmenter:
+            The augmentation pipeline
+    """
+    augmenter = Augmenter(
+        augmentations=[
+            Zoom(
+                prob=params["affine_prob"],
+                min_zoom=params["scale_min"],
+                max_zoom=params["scale_max"]
+            ),
+            Flip(prob=params['flip_prob']),
+            Rot90(prob=params['rotate_prob'], rotate_count=params['rotate_count']),
+            GaussianBlur(
+                params["gaussian_blur_prob"],
+                min_std=params["gaussian_blur_min"],
+                max_std=params["gaussian_blur_max"]
+            ),
+            LinearContrast(
+                prob=params['contrast_prob'],
+                min_factor=params['contrast_min'],
+                max_factor=params['contrast_max']
+            ),
+            GaussianNoise(
+                prob=params['gaussian_noise_prob'],
+                min_std=params['gaussian_noise_min'],
+                max_std=params['gaussian_noise_max']
+            ),
+        ],
+        parallel_calls=parallel_calls
+        )
+    return augmenter
+

@@ -1,6 +1,8 @@
 import pytest
 import numpy as np
 from augmentation_pipeline import augment_images, get_augmentation_pipeline, prepare_tf_aug, py_aug
+from augmentation_pipeline import prepare_keras_aug
+import tensorflow as tf
 import imgaug.augmenters as iaa
 import tensorflow as tf
 from copy import deepcopy
@@ -17,7 +19,7 @@ def get_params():
         # elastic
         "elastic_prob": 1.0, "elastic_alpha": [0, 5.0], "elastic_sigma": 0.5,
         # rotate
-        "rotate_count": [0, 3],
+        "rotate_prob": 1.0, "rotate_count": 3,
         # gaussian noise
         "gaussian_noise_prob": 1.0, "gaussian_noise_min": 0.1, "gaussian_noise_max": 0.5,
         # gaussian blur
@@ -129,3 +131,22 @@ def test_py_aug(batch_num):
     for key in ["mplex_img", "binary_mask", "marker_activity_mask"]:
         assert batch_aug[key].shape == batch[key].shape
         assert not np.array_equal(batch_aug[key],  batch[key])
+
+
+def test_prepare_keras_aug(batch_num=2, chan_num=2):
+    params = get_params()
+    augmentation_pipeline = prepare_keras_aug(params)
+    images = np.zeros([batch_num, 100, 100, chan_num], dtype=np.float32)
+    masks = np.zeros([batch_num, 100, 100, chan_num], dtype=np.int32)
+    images[0, :30, :50, :] = 10.1
+    images[0, 50:, 50:, :] = 21.12
+    masks[0, :30, :50] = 1
+    masks[0, 50:, 50:] = 2
+    images = tf.constant(images, tf.float32)
+    masks = tf.constant(masks, tf.int32)
+    augmented_images, augmented_masks = augmentation_pipeline(images, masks)
+    fig, ax = plt.subplots(1, 2)
+    ax[0].imshow(augmented_images[0, :, :, 0])
+    ax[1].imshow(augmented_masks[0, :, :, 0])
+    plt.show()
+test_prepare_keras_aug()

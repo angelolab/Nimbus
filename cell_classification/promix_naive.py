@@ -105,6 +105,7 @@ class PromixNaive(ModelBuilder):
                     self.reduce_to_cells,
                     (loss_img, batch["instance_mask"]),
                     infer_shape=False,
+                    parallel_iterations=4,
                     fn_output_signature=[
                         tf.RaggedTensorSpec(shape=[None], dtype=tf.int32, ragged_rank=0),
                         tf.RaggedTensorSpec(shape=[None], dtype=tf.float32, ragged_rank=0),
