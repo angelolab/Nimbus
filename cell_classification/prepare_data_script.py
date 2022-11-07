@@ -23,7 +23,7 @@ data_prep = SegmentationTFRecords(
     stride=[240, 240],
     tf_record_path=os.path.normpath("C:/Users/lorenz/Desktop/angelo_lab/TONIC"),
     normalization_dict_path=os.path.normpath(
-        "C:/Users/lorenz/Desktop/angelo_lab/TONIC/normalization_dict.json"
+       "C:/Users/lorenz/Desktop/angelo_lab/TONIC/normalization_dict.json"
     ),
     normalization_quantile=0.99,
     cell_type_key="cell_meta_cluster",
@@ -31,6 +31,7 @@ data_prep = SegmentationTFRecords(
     segmentation_fname="cell_segmentation",
     segmentation_naming_convention=naming_convention,
     segment_label_key="label",
+    exlude_background_tiles=True,
 )
 
 data_prep.make_tf_record()
