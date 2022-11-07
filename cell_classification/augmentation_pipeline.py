@@ -6,6 +6,7 @@ import numpy as np
 import tensorflow as tf
 from keras.layers.preprocessing.image_preprocessing import transform, get_zoom_matrix
 
+
 def augment_images(images, masks, augmentation_pipeline):
     """
     Augment images and masks.
@@ -153,6 +154,7 @@ class Flip(tf.Module):
             labels = tf.reverse(labels, axis=[2])
         return image, labels
 
+
 class Rot90(tf.Module):
     def __init__(self, prob=0.5, rotate_count=3):
         super(Rot90, self).__init__()
@@ -161,10 +163,11 @@ class Rot90(tf.Module):
 
     def __call__(self, image, labels):
         if tf.random.uniform(()) < self.prob:
-            k = tf.random.uniform((), minval=0, maxval=self.rotate_count, dtype=tf.int32)
+            k = tf.random.uniform((), minval=1, maxval=self.rotate_count, dtype=tf.int32)
             image = tf.image.rot90(image, k)
             labels = tf.image.rot90(labels, k)
         return image, labels
+
 
 class GaussianNoise(tf.Module):
     def __init__(self, prob=0.5, min_std=0.1, max_std=0.2):
@@ -182,9 +185,10 @@ class GaussianNoise(tf.Module):
             image += noise
         return image, labels
 
+
 class GaussianBlur(tf.Module):
     """ Gaussian blur augmentation"""
-    def __init__(self, prob=0.5, min_std=0.1, max_std=0.2):
+    def __init__(self, prob=0.5, min_std=0.1, max_std=0.2, kernel_size=5):
         """
         Args:
             prob (float):
@@ -193,29 +197,30 @@ class GaussianBlur(tf.Module):
                 The minimum standard deviation of the gaussian filter
             max_std (float):
                 The maximum standard deviation of the gaussian filter
+            kernel_size (int):
+                The size of the kernel
         """
         super(GaussianBlur, self).__init__()
         self.prob = prob
         self.min_std = min_std
         self.max_std = max_std
+        self.size = kernel_size
 
-    def gaussian_kernel(self, sigma, n_channels, size=5):
+    def gaussian_kernel(self, sigma, n_channels):
         """Returns 2D Gaussian kernel for convolutions.
         Args:
             sigma (float):
                 Standard deviation of the gaussian filter
             n_channels (int):
                 The number of channels of the image
-            size (int):
-                The size of the kernel
         Returns:
             tf.Tensor:
                 The gaussian kernel
         """
-        x = tf.range(-size, size + 1, dtype=tf.float32)
+        x = tf.range(-self.size, self.size + 1, dtype=tf.float32)
         g = tf.math.exp(-(x ** 2) / (2.0 * sigma ** 2))
-        g_norm2d = tf.sqrt(tf.reduce_sum(g ** 2))
-        g_kernel = tf.tensordot(g, g, axes=0) / (g_norm2d ** 2)
+        g_kernel = tf.tensordot(g, g, axes=0)
+        g_kernel = g_kernel / tf.reduce_sum(g_kernel)
         g_kernel = tf.expand_dims(g_kernel, axis=-1)
         g_kernel = tf.expand_dims(g_kernel, axis=-1)
         g_kernel = tf.tile(g_kernel, [1, 1, n_channels, 1])
@@ -236,11 +241,12 @@ class GaussianBlur(tf.Module):
         """
         if tf.random.uniform(()) < self.prob:
             sigma = tf.random.uniform((), self.min_std, self.max_std)
-            kernel = self.gaussian_kernel(sigma, n_channels = tf.shape(image)[-1])
+            kernel = self.gaussian_kernel(sigma, n_channels=tf.shape(image)[-1])
             image = tf.nn.depthwise_conv2d(
                 image, kernel, strides=[1, 1, 1, 1], padding='SAME'
             )
         return image, labels
+
 
 class Zoom(tf.Module):
     """ Zoom augmentation"""
@@ -275,25 +281,35 @@ class Zoom(tf.Module):
         """
         if tf.random.uniform(()) < self.prob:
             zoom_factor = tf.random.uniform([1], self.min_zoom, self.max_zoom)
+            zoom_factor = 1/zoom_factor
             zooms = tf.expand_dims(
                 tf.cast(
                     tf.concat([zoom_factor, zoom_factor], axis=0), dtype=tf.float32
-                ),0
+                ), 0
             )
-            h, w, _ = image.shape
+            squeeze = False
+            if tf.rank(image) == 3:
+                image = tf.expand_dims(image, axis=0)
+                labels = tf.expand_dims(labels, axis=0)
+                squeeze = True
+            _, h, w, _ = image.shape
             image = transform(
-                tf.expand_dims(image, 0),
+                image,
                 get_zoom_matrix(zooms, h, w),
                 fill_mode=self.fill_mode,
                 interpolation="bilinear",
             )
             labels = transform(
-                tf.expand_dims(labels, 0),
+                labels,
                 get_zoom_matrix(zooms, h, w),
                 fill_mode=self.fill_mode,
                 interpolation="nearest",
             )
-        return tf.squeeze(image,0), tf.squeeze(labels, 0)
+            if squeeze:
+                image = tf.squeeze(image, axis=0)
+                labels = tf.squeeze(labels, axis=0)
+        return image, labels
+
 
 class LinearContrast(tf.Module):
     """ Linear contrast augmentation"""
@@ -329,6 +345,52 @@ class LinearContrast(tf.Module):
             factor = tf.random.uniform((), self.min_factor, self.max_factor)
             image *= factor
         return image, labels
+
+
+class MixUp(tf.Module):
+    """ MixUp augmentation for segmentation data"""
+    def __init__(self, prob=0.5, alpha=0.2):
+        """
+        Args:
+            prob (float):
+                The probability of applying the augmentation
+            alpha (float):
+                The alpha parameter of the beta distribution
+        """
+        super(MixUp, self).__init__()
+        self.prob = prob
+        self.alpha = alpha
+
+    def __call__(self, image, labels):
+        """ Apply mixup augmentation
+        Args:
+            image (tf.Tensor):
+                The batch of images to augment
+            labels (tf.Tensor):
+                The batch of labels to augment
+        Returns:
+            tf.Tensor:
+                The augmented image batch
+            tf.Tensor:
+                The augmented label batch
+        """
+        labels = tf.cast(labels, dtype=tf.float32)
+        undecided = tf.where(labels == 2, True, False)
+        b = tf.shape(image)[0]
+        prob = tf.random.uniform([b], 0, 1) < self.prob
+        beta = tf.random.uniform([b], 0, 1)
+        beta = tf.math.maximum(beta, 1 - beta)
+        beta = tf.math.pow(beta, 1 / self.alpha)
+        beta = tf.where(prob, beta, tf.ones_like(beta))
+        prob = tf.cast(tf.reshape(prob, [b, 1, 1, 1]), tf.float32)
+        beta = tf.reshape(beta, [b, 1, 1, 1])
+        image = beta * image + (1 - beta) * tf.reverse(image, axis=[0])
+        labels = beta * labels + (1 - beta) * tf.reverse(labels, axis=[0])
+        undecided_reverse = prob * tf.cast(tf.reverse(undecided, axis=[0]), tf.float32)
+        undecided = tf.cast(undecided, tf.float32) + undecided_reverse
+        labels = tf.where(undecided > 0, 2, labels)
+        return image, labels
+
 
 class Augmenter(tf.Module):
     """Augmenter class to apply a list of augmentations to a batch of images and labels"""
@@ -381,6 +443,7 @@ class Augmenter(tf.Module):
         )
         return image_batch, labels_batch
 
+
 def prepare_keras_aug(params, parallel_calls=4):
     """ Prepare the augmentation pipeline for use within keras
     Args:
@@ -418,4 +481,3 @@ def prepare_keras_aug(params, parallel_calls=4):
         parallel_calls=parallel_calls
         )
     return augmenter
-

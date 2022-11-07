@@ -1,7 +1,8 @@
 import pytest
 import numpy as np
 from augmentation_pipeline import augment_images, get_augmentation_pipeline, prepare_tf_aug, py_aug
-from augmentation_pipeline import prepare_keras_aug
+from augmentation_pipeline import prepare_keras_aug, Flip, Rot90, GaussianNoise, GaussianBlur, Zoom
+from augmentation_pipeline import LinearContrast, MixUp
 import tensorflow as tf
 import imgaug.augmenters as iaa
 import tensorflow as tf
@@ -64,8 +65,8 @@ def test_augment_images(batch_num, chan_num):
     assert list(np.unique(augmented_masks)) == [0, 1, 2]
 
     # check if images and masks where augmented with the same spatial augmentations approx.
-    assert np.abs(augmented_images[augmented_masks == 0].mean() - images[masks == 0].mean()) < 1
-    assert np.abs(augmented_images[augmented_masks == 1].mean() - images[masks == 1].mean()) < 1
+    assert np.abs(augmented_images[augmented_masks == 0].mean() - images[masks == 0].mean()) < 1.5
+    assert np.abs(augmented_images[augmented_masks == 1].mean() - images[masks == 1].mean()) < 1.5
     assert np.abs(augmented_images[augmented_masks == 2].mean() - images[masks == 2].mean()) < 5
 
     # check control flow for no channel dimensions for the masks
@@ -74,15 +75,27 @@ def test_augment_images(batch_num, chan_num):
     assert augmented_masks.shape == masks.shape
 
 
-def prepare_data(batch_num):
+def prepare_data(batch_num, return_tensor=False):
     mplex_img = np.zeros([batch_num, 100, 100, 2], dtype=np.float32)
     binary_mask = np.zeros([batch_num, 100, 100, 1], dtype=np.int32)
     marker_activity_mask = np.zeros([batch_num, 100, 100, 1], dtype=np.int32)
-    mplex_img[0, :50, :50, :] = 10.1
-    mplex_img[0, 50:, 50:, :] = 201.12
-    binary_mask[0, :50, :50] = 1
+    mplex_img[0, :30, :50, :] = 10.1
+    mplex_img[0, 50:, 50:, :] = 21.12
+    mplex_img[-1, 30:60, :50, :] = 14.11
+    mplex_img[-1, :50, 50:, :] = 18.12
+    binary_mask[0, :30, :50] = 1
     binary_mask[0, 50:, 50:] = 1
-    marker_activity_mask[0, :50, :50] = 1
+    binary_mask[-1, 30:60, :50, :] = 1
+    binary_mask[-1, :50, 50:, :] = 1
+    marker_activity_mask[0, :30, :50] = 1
+    marker_activity_mask[0, 50:, 50:] = 2
+    marker_activity_mask[-1, 30:60, :50, :] = 1
+    marker_activity_mask[-1, :50, 50:, :] = 2
+
+    if return_tensor:
+        mplex_img = tf.constant(mplex_img, tf.float32)
+        binary_mask = tf.constant(binary_mask, tf.int32)
+        marker_activity_mask = tf.constant(marker_activity_mask, tf.int32)
     return mplex_img, binary_mask, marker_activity_mask
 
 
@@ -133,20 +146,137 @@ def test_py_aug(batch_num):
         assert not np.array_equal(batch_aug[key],  batch[key])
 
 
-def test_prepare_keras_aug(batch_num=2, chan_num=2):
+def test_prepare_keras_aug(batch_num=2):
     params = get_params()
     augmentation_pipeline = prepare_keras_aug(params)
-    images = np.zeros([batch_num, 100, 100, chan_num], dtype=np.float32)
-    masks = np.zeros([batch_num, 100, 100, chan_num], dtype=np.int32)
-    images[0, :30, :50, :] = 10.1
-    images[0, 50:, 50:, :] = 21.12
-    masks[0, :30, :50] = 1
-    masks[0, 50:, 50:] = 2
-    images = tf.constant(images, tf.float32)
-    masks = tf.constant(masks, tf.int32)
+    images, _, masks = prepare_data(batch_num, True)
     augmented_images, augmented_masks = augmentation_pipeline(images, masks)
-    fig, ax = plt.subplots(1, 2)
-    ax[0].imshow(augmented_images[0, :, :, 0])
-    ax[1].imshow(augmented_masks[0, :, :, 0])
-    plt.show()
-test_prepare_keras_aug()
+
+    # check if right types and shapes are returned
+    assert augmented_images.dtype == tf.float32
+    assert augmented_masks.dtype == tf.int32
+    assert augmented_images.shape == images.shape
+    assert augmented_masks.shape == masks.shape
+
+
+def test_flip(batch_num=2):
+    images, _, masks = prepare_data(batch_num, True)
+    flip = Flip(prob=1.0)
+    aug_img, aug_mask = flip(images, masks)
+
+    # check if right types and shapes are returned
+    assert aug_img.dtype == images.dtype
+    assert aug_mask.dtype == masks.dtype
+    assert aug_img.shape == images.shape
+    assert aug_mask.shape == masks.shape
+
+    # check if data got flipped
+    assert not np.array_equal(aug_img, images)
+    assert not np.array_equal(aug_mask, masks)
+    assert np.sum(aug_img) == np.sum(images)
+    assert np.sum(aug_mask) == np.sum(masks)
+
+
+def test_rot90(batch_num=2):
+    images, _, masks = prepare_data(batch_num, True)
+    rot90 = Rot90(prob=1.0, rotate_count=2)
+    aug_img, aug_mask = rot90(images, masks)
+
+    # check if right types and shapes are returned
+    assert aug_img.dtype == images.dtype
+    assert aug_mask.dtype == masks.dtype
+    assert aug_img.shape == images.shape
+    assert aug_mask.shape == masks.shape
+
+    # check if data got rotated
+    assert not np.array_equal(aug_img, images)
+    assert not np.array_equal(aug_mask, masks)
+    assert np.sum(aug_img) == np.sum(images)
+    assert np.sum(aug_mask) == np.sum(masks)
+
+
+def test_gaussian_noise(batch_num=2):
+    images, _, masks = prepare_data(batch_num, True)
+    gaussian_noise = GaussianNoise(prob=1.0)
+    aug_img, aug_mask = gaussian_noise(images, masks)
+
+    # check if right types and shapes are returned
+    assert aug_img.dtype == images.dtype
+    assert aug_mask.dtype == masks.dtype
+    assert aug_img.shape == images.shape
+    assert aug_mask.shape == masks.shape
+
+    # check if data got augmented
+    assert not np.array_equal(aug_img, images)
+    assert np.array_equal(aug_mask, masks)
+    assert np.isclose(np.mean(aug_img), np.mean(images), atol=0.1)
+
+
+def test_gaussian_blur(batch_num=2):
+    images, _, masks = prepare_data(batch_num, True)
+    gaussian_blur = GaussianBlur(1.0, 0.5, 1.5, 5)
+    aug_img, aug_mask = gaussian_blur(images, masks)
+
+    # check if right types and shapes are returned
+    assert aug_img.dtype == images.dtype
+    assert aug_mask.dtype == masks.dtype
+    assert aug_img.shape == images.shape
+    assert aug_mask.shape == masks.shape
+
+    # check if data got augmented
+    assert not np.array_equal(aug_img, images)
+    assert np.array_equal(aug_mask, masks)
+    assert np.isclose(np.mean(aug_img), np.mean(images), atol=0.2)
+
+
+def test_zoom(batch_num=2):
+    images, _, masks = prepare_data(batch_num, True)
+    zoom = Zoom(1.0, 0.5, 0.5)
+    aug_img, aug_mask = zoom(images, masks)
+
+    # check if right types and shapes are returned
+    assert aug_img.dtype == images.dtype
+    assert aug_mask.dtype == masks.dtype
+    assert aug_img.shape == images.shape
+    assert aug_mask.shape == masks.shape
+
+    # check if data got augmented
+    assert not np.array_equal(aug_img, images)
+    assert not np.array_equal(aug_mask, masks)
+
+    # check if data got zoomed to 0.5
+    assert np.sum(aug_img) == np.sum(images) / 4
+    assert np.sum(aug_mask) == np.sum(masks) / 4
+
+
+def test_linear_contrast(batch_num=2):
+    images, _, masks = prepare_data(batch_num, True)
+    linear_contrast = LinearContrast(1.0, 0.75, 0.75)
+    aug_img, aug_mask = linear_contrast(images, masks)
+
+    # check if right types and shapes are returned
+    assert aug_img.dtype == images.dtype
+    assert aug_mask.dtype == masks.dtype
+    assert aug_img.shape == images.shape
+    assert aug_mask.shape == masks.shape
+
+    # check if data got augmented
+    assert not np.array_equal(aug_img, images)
+    assert np.array_equal(aug_mask, masks)
+    assert np.isclose(np.mean(aug_img), np.mean(images) * 0.75, atol=0.01)
+
+
+def test_mixup(batch_num=8):
+    images, _, masks = prepare_data(batch_num, True)
+    mixup = MixUp(1.0, 0.5)
+    aug_img, aug_mask = mixup(images, masks)
+
+    # check if right types and shapes are returned
+    assert aug_img.dtype == images.dtype
+    assert aug_mask.dtype == tf.float32
+    assert aug_img.shape == images.shape
+    assert aug_mask.shape == masks.shape
+
+    # check if data got augmented
+    assert not np.array_equal(aug_img, images)
+    assert not np.array_equal(aug_mask, masks)
