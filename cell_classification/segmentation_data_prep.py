@@ -20,7 +20,7 @@ class SegmentationTFRecords:
         tile_size, stride, tf_record_path, selected_markers=None, normalization_dict_path=None,
         normalization_quantile=0.999, cell_type_key="cluster_labels", sample_key="SampleID",
         segmentation_fname="cell_segmentation", segment_label_key="labels",
-        segmentation_naming_convention=None
+        segmentation_naming_convention=None, exlude_background_tiles=False
     ):
         """Initializes SegmentationTFRecords and loads everything except the images
 
@@ -60,6 +60,9 @@ class SegmentationTFRecords:
                 Function that takes in the sample name and returns the path to the segmentation
                 .tiff file. Default is None, then it is assumed that the segmentation file is in
                 the sample folder and is named $segmentation_fname.tiff
+            exlude_background_tiles (bool):
+                Whether to exclude the all tiles that only contain background or marker-negative
+                cells
         """
         self.selected_markers = selected_markers
         self.data_dir = data_dir
@@ -77,6 +80,7 @@ class SegmentationTFRecords:
         self.tile_size = tile_size
         self.stride = stride
         self.segmentation_naming_convention = segmentation_naming_convention
+        self.exlude_background_tiles = exlude_background_tiles
 
     def get_image(self, data_folder, marker):
         """Loads the images from a single data_folder
@@ -253,6 +257,9 @@ class SegmentationTFRecords:
         num_tiles = tiled_examples[spatial_keys[0]].shape[0]
         example_list = []
         for tile in range(num_tiles):
+            if self.exlude_background_tiles and \
+                    np.sum(tiled_examples["marker_activity_mask"]) == 0:
+                continue
             example_out = {}
             for key in spatial_keys:
                 example_out[key] = tiled_examples[key][tile]
@@ -390,11 +397,11 @@ class SegmentationTFRecords:
                     example_list = self.tile_example(example)
                 else:
                     example_list = [example]
-
                 # serialize and write examples to tfrecord
-                for ex in example_list:
-                    example_serialized = self.serialize_example(ex)
-                    self.writer.write(example_serialized)
+                if example_list:
+                    for ex in example_list:
+                        example_serialized = self.serialize_example(ex)
+                        self.writer.write(example_serialized)
         self.writer.close()
         delattr(self, "writer")
 
@@ -465,7 +472,9 @@ class SegmentationTFRecords:
                 img = self.get_image(data_folder, marker)
                 if marker not in quantiles:
                     quantiles[marker] = []
-                quantiles[marker].append(np.quantile(img, self.normalization_quantile))
+                foreground = img[img > 0]
+                if np.sum(foreground) > 0:
+                    quantiles[marker].append(np.quantile(foreground, self.normalization_quantile))
 
         # calculate the normalization matrix
         normalization_matrix = {}
