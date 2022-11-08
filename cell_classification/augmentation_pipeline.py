@@ -239,12 +239,15 @@ class GaussianBlur(tf.Module):
             tf.Tensor:
                 The labels
         """
+        if tf.rank(image) == 3:
+            image = tf.expand_dims(image, axis=0)
         if tf.random.uniform(()) < self.prob:
             sigma = tf.random.uniform((), self.min_std, self.max_std)
             kernel = self.gaussian_kernel(sigma, n_channels=tf.shape(image)[-1])
             image = tf.nn.depthwise_conv2d(
                 image, kernel, strides=[1, 1, 1, 1], padding='SAME'
             )
+        image = tf.squeeze(image)
         return image, labels
 
 
@@ -394,7 +397,7 @@ class MixUp(tf.Module):
 
 class Augmenter(tf.Module):
     """Augmenter class to apply a list of augmentations to a batch of images and labels"""
-    def __init__(self, augmentations, parallel_calls=4):
+    def __init__(self, augmentations, parallel_calls=4, dtype=(tf.float32, tf.int32)):
         """Augmentation module
         Args:
             augmentations (list):
@@ -403,6 +406,7 @@ class Augmenter(tf.Module):
         super(Augmenter, self).__init__()
         self.augmentations = augmentations
         self.parallel_calls = parallel_calls
+        self.dtype = dtype
 
     def aug_sample(self, sample):
         """Apply augmentations to a single image and label
@@ -438,13 +442,13 @@ class Augmenter(tf.Module):
         image_batch, labels_batch = tf.map_fn(
             self.aug_sample,
             elems=(image_batch, labels_batch),
-            dtype=(tf.float32, tf.int32),
+            dtype=self.dtype,
             parallel_iterations=self.parallel_calls,
         )
         return image_batch, labels_batch
 
 
-def prepare_keras_aug(params, parallel_calls=4):
+def prepare_keras_aug(params, parallel_calls=4, dtype=(tf.float32, tf.int32)):
     """ Prepare the augmentation pipeline for use within keras
     Args:
         params (dict):
@@ -478,6 +482,7 @@ def prepare_keras_aug(params, parallel_calls=4):
                 max_std=params['gaussian_noise_max']
             ),
         ],
-        parallel_calls=parallel_calls
+        parallel_calls=parallel_calls,
+        dtype=dtype
         )
     return augmenter

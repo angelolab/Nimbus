@@ -2,6 +2,7 @@ from deepcell.utils.train_utils import rate_scheduler, get_callbacks, count_gpus
 from segmentation_data_prep import parse_dict, feature_description
 from tensorflow.keras.optimizers.schedules import CosineDecay
 from tensorflow.keras.callbacks import LearningRateScheduler
+from augmentation_pipeline import prepare_keras_aug, MixUp
 from deepcell.model_zoo.panopticnet import PanopticNet
 from tensorflow.keras.optimizers import SGD, Adam
 from semantic_head import create_semantic_head
@@ -23,6 +24,8 @@ class PromixNaive(ModelBuilder):
         self.loss_fn = self.prep_loss()
         self.quantile = self.params["quantile"]
         self.class_wise_loss_quantiles = {}
+        self.aug_fn = prepare_keras_aug(params, dtype=(tf.float32, tf.uint8))
+        self.mixup_fn = MixUp(prob=params["mixup_prob"], alpha=params["mixup_alpha"])
 
     def matched_high_confidence_selection_thresholds(self):
         """Returns a dictionary with the thresholds for the high confidence selection"""
@@ -57,7 +60,7 @@ class PromixNaive(ModelBuilder):
         )
 
     @staticmethod  # with @tf.function 0.4 s/batch, without 0.15 s/batch on notebook
-    def train_step(model, optimizer, loss_fn, aug_fn, loss_mask, x, y_gt):
+    def train_step(model, optimizer, loss_fn, aug_fn, mixup_fn, loss_mask, x, y_gt):
         """Performs a training step
         Args:
             model (tf.keras.Model): model to train
@@ -69,11 +72,15 @@ class PromixNaive(ModelBuilder):
         Returns:
             tf.Tensor: loss value
         """
-        x_aug, loss_mask_aug, y_gt_aug = aug_fn(x, loss_mask, y_gt)
+        loss_mask = tf.expand_dims(tf.cast(loss_mask, tf.uint8), -1)
+
+        x_aug, cat = aug_fn(x, tf.concat([loss_mask, y_gt], axis=-1))
+        loss_mask_aug, y_gt_aug = tf.split(cat, [loss_mask.shape[-1], y_gt.shape[-1]], axis=-1)
+        y_gt_aug = tf.where(loss_mask_aug == 0, 2, y_gt_aug)
+        x_aug, y_gt_aug = mixup_fn(x_aug, y_gt_aug)
         with tf.GradientTape() as tape:
-            y_pred = model(x, training=True)
-            loss_img = loss_fn(y_gt, y_pred)
-            loss_img *= loss_mask
+            y_pred = model(x_aug, training=True)
+            loss_img = loss_fn(y_gt_aug, y_pred)
             loss = tf.reduce_mean(loss_img)
         gradients = tape.gradient(loss, model.trainable_variables)
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
@@ -130,11 +137,9 @@ class PromixNaive(ModelBuilder):
                 loss_mask *= tf.cast(tf.squeeze(batch["binary_mask"], -1), tf.float32)
                 # augment batches and do train_step
 
-                def aug_fn(x, y, z):
-                    return (x, y, z)
-
                 train_loss = train_step(
-                    self.model, self.optimizer, self.loss_fn, aug_fn, loss_mask, x, y
+                    self.model, self.optimizer, self.loss_fn, self.aug_fn, self.mixup_fn,
+                    loss_mask, x, y
                 )
                 self.train_loss_tmp.append(train_loss)
                 self.step += 1
