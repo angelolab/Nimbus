@@ -96,7 +96,7 @@ def get_augmentation_pipeline(params):
 
 def prepare_tf_aug(augmentation_pipeline):
     def tf_aug(mplex_img, binary_mask, marker_activity_mask):
-        """ Boiler plate code necessary to apply augmentations onto tf.data.Dataset objects
+        """Boiler plate code necessary to apply augmentations onto tf.data.Dataset objects
         Args:
             mplex_img (tf.Tensor):
                 The images (b,h,w,c) to augment
@@ -109,18 +109,20 @@ def prepare_tf_aug(augmentation_pipeline):
                 The augmentation function applicable on the input images and masks
         """
         aug_images, aug_masks = augment_images(
-            mplex_img.numpy(), np.concatenate([binary_mask, marker_activity_mask], -1),
-            augmentation_pipeline
+            mplex_img.numpy(),
+            np.concatenate([binary_mask, marker_activity_mask], -1),
+            augmentation_pipeline,
         )
         mplex_img = aug_images
         binary_mask = aug_masks[..., :1]
         marker_activity_mask = aug_masks[..., 1:]
         return mplex_img, binary_mask, marker_activity_mask
+
     return tf_aug
 
 
 def py_aug(batch, tf_aug):
-    """ Python function wrapper to apply augmentations onto tf.data.Dataset objects
+    """Python function wrapper to apply augmentations onto tf.data.Dataset objects
     Args:
         batch (dict):
             The batch to augment
@@ -131,12 +133,13 @@ def py_aug(batch, tf_aug):
             The augmented batch
     """
     mplex_img, binary_mask, marker_activity_mask = tf.py_function(
-        tf_aug, [batch['mplex_img'], batch['binary_mask'], batch['marker_activity_mask']],
-        [tf.float32, tf.uint8, tf.uint8]
+        tf_aug,
+        [batch["mplex_img"], batch["binary_mask"], batch["marker_activity_mask"]],
+        [tf.float32, tf.uint8, tf.uint8],
     )
-    batch['mplex_img'] = mplex_img
-    batch['binary_mask'] = binary_mask
-    batch['marker_activity_mask'] = marker_activity_mask
+    batch["mplex_img"] = mplex_img
+    batch["binary_mask"] = binary_mask
+    batch["marker_activity_mask"] = marker_activity_mask
     return batch
 
 
@@ -147,11 +150,11 @@ class Flip(tf.Module):
 
     def __call__(self, image, labels):
         if tf.random.uniform(()) < self.prob:
+            image = tf.reverse(image, axis=[0])
+            labels = tf.reverse(labels, axis=[0])
+        if tf.random.uniform(()) < self.prob:
             image = tf.reverse(image, axis=[1])
             labels = tf.reverse(labels, axis=[1])
-        if tf.random.uniform(()) < self.prob:
-            image = tf.reverse(image, axis=[2])
-            labels = tf.reverse(labels, axis=[2])
         return image, labels
 
 
@@ -179,7 +182,9 @@ class GaussianNoise(tf.Module):
     def __call__(self, image, labels):
         if tf.random.uniform(()) < self.prob:
             noise = tf.random.normal(
-                shape=tf.shape(image), mean=0.0, dtype=tf.float32,
+                shape=tf.shape(image),
+                mean=0.0,
+                dtype=tf.float32,
                 stddev=tf.random.uniform((), self.min_std, self.max_std),
             )
             image += noise
@@ -187,7 +192,8 @@ class GaussianNoise(tf.Module):
 
 
 class GaussianBlur(tf.Module):
-    """ Gaussian blur augmentation"""
+    """Gaussian blur augmentation"""
+
     def __init__(self, prob=0.5, min_std=0.1, max_std=0.2, kernel_size=5):
         """
         Args:
@@ -227,7 +233,7 @@ class GaussianBlur(tf.Module):
         return g_kernel
 
     def __call__(self, image, labels):
-        """ Applies gaussian blurring
+        """Applies gaussian blurring
         Args:
             image (tf.Tensor):
                 The image to blur
@@ -239,21 +245,23 @@ class GaussianBlur(tf.Module):
             tf.Tensor:
                 The labels
         """
+        squeeze = False
         if tf.rank(image) == 3:
             image = tf.expand_dims(image, axis=0)
+            squeeze = True
         if tf.random.uniform(()) < self.prob:
             sigma = tf.random.uniform((), self.min_std, self.max_std)
             kernel = self.gaussian_kernel(sigma, n_channels=tf.shape(image)[-1])
-            image = tf.nn.depthwise_conv2d(
-                image, kernel, strides=[1, 1, 1, 1], padding='SAME'
-            )
-        image = tf.squeeze(image)
+            image = tf.nn.depthwise_conv2d(image, kernel, strides=[1, 1, 1, 1], padding="SAME")
+        if squeeze:
+            image = tf.squeeze(image, axis=0)
         return image, labels
 
 
 class Zoom(tf.Module):
-    """ Zoom augmentation"""
-    def __init__(self, prob=0.5, min_zoom=0.8, max_zoom=1.2, fill_mode='constant'):
+    """Zoom augmentation"""
+
+    def __init__(self, prob=0.5, min_zoom=0.8, max_zoom=1.2, fill_mode="constant"):
         """
         Args:
             prob (float):
@@ -270,7 +278,7 @@ class Zoom(tf.Module):
         self.fill_mode = fill_mode
 
     def __call__(self, image, labels):
-        """ Applies zoom
+        """Applies zoom
         Args:
             image (tf.Tensor):
                 The image to zoom
@@ -284,11 +292,9 @@ class Zoom(tf.Module):
         """
         if tf.random.uniform(()) < self.prob:
             zoom_factor = tf.random.uniform([1], self.min_zoom, self.max_zoom)
-            zoom_factor = 1/zoom_factor
+            zoom_factor = 1 / zoom_factor
             zooms = tf.expand_dims(
-                tf.cast(
-                    tf.concat([zoom_factor, zoom_factor], axis=0), dtype=tf.float32
-                ), 0
+                tf.cast(tf.concat([zoom_factor, zoom_factor], axis=0), dtype=tf.float32), 0
             )
             squeeze = False
             if tf.rank(image) == 3:
@@ -315,7 +321,8 @@ class Zoom(tf.Module):
 
 
 class LinearContrast(tf.Module):
-    """ Linear contrast augmentation"""
+    """Linear contrast augmentation"""
+
     def __init__(self, prob=0.5, min_factor=0.5, max_factor=1.5):
         """
         Args:
@@ -332,7 +339,7 @@ class LinearContrast(tf.Module):
         self.max_factor = max_factor
 
     def __call__(self, image, labels):
-        """ Apply linear contrast augmentation
+        """Apply linear contrast augmentation
         Args:
             image (tf.Tensor):
                 The image to augment
@@ -351,7 +358,8 @@ class LinearContrast(tf.Module):
 
 
 class MixUp(tf.Module):
-    """ MixUp augmentation for segmentation data"""
+    """MixUp augmentation for segmentation data"""
+
     def __init__(self, prob=0.5, alpha=0.2):
         """
         Args:
@@ -364,11 +372,13 @@ class MixUp(tf.Module):
         self.prob = prob
         self.alpha = alpha
 
-    def __call__(self, image, labels):
-        """ Apply mixup augmentation
+    def __call__(self, x_mplex, x_binary, labels, loss_mask):
+        """Apply mixup augmentation
         Args:
-            image (tf.Tensor):
+            x_mplex (tf.Tensor):
                 The batch of images to augment
+            x_binary (tf.Tensor):
+                The batch of binary images to augment
             labels (tf.Tensor):
                 The batch of labels to augment
         Returns:
@@ -377,26 +387,33 @@ class MixUp(tf.Module):
             tf.Tensor:
                 The augmented label batch
         """
-        labels = tf.cast(labels, dtype=tf.float32)
-        undecided = tf.where(labels == 2, True, False)
-        b = tf.shape(image)[0]
+        # cast to float
+        loss_mask = tf.cast(loss_mask, tf.float32)
+        labels = tf.cast(labels, tf.float32)
+        x_binary = tf.cast(x_binary, tf.float32)
+        # calculate mixup coefficient beta and prob [0,1] if an image gets transformed
+        b = tf.shape(x_mplex)[0]
         prob = tf.random.uniform([b], 0, 1) < self.prob
         beta = tf.random.uniform([b], 0, 1)
         beta = tf.math.maximum(beta, 1 - beta)
         beta = tf.math.pow(beta, 1 / self.alpha)
         beta = tf.where(prob, beta, tf.ones_like(beta))
         prob = tf.cast(tf.reshape(prob, [b, 1, 1, 1]), tf.float32)
+        # apply mixup on data
         beta = tf.reshape(beta, [b, 1, 1, 1])
-        image = beta * image + (1 - beta) * tf.reverse(image, axis=[0])
+        x_mplex = beta * x_mplex + (1 - beta) * tf.reverse(x_mplex, axis=[0])
+        x_binary = beta * x_binary + (1 - beta) * tf.reverse(x_binary, axis=[0])
         labels = beta * labels + (1 - beta) * tf.reverse(labels, axis=[0])
-        undecided_reverse = prob * tf.cast(tf.reverse(undecided, axis=[0]), tf.float32)
-        undecided = tf.cast(undecided, tf.float32) + undecided_reverse
-        labels = tf.where(undecided > 0, 2, labels)
-        return image, labels
+        # loss mask should be 1 where both mixup loss masks == 1 and zero otherwise
+        loss_mask_reverse = prob * tf.cast(tf.reverse(loss_mask, axis=[0]), tf.float32)
+        # make sure that the loss_mask doesn't change for prob = 0
+        loss_mask = prob * (loss_mask * loss_mask_reverse) + tf.math.abs(prob - 1) * loss_mask
+        return x_mplex, x_binary, labels, loss_mask
 
 
 class Augmenter(tf.Module):
     """Augmenter class to apply a list of augmentations to a batch of images and labels"""
+
     def __init__(self, augmentations, parallel_calls=4, dtype=(tf.float32, tf.int32)):
         """Augmentation module
         Args:
@@ -449,7 +466,7 @@ class Augmenter(tf.Module):
 
 
 def prepare_keras_aug(params, parallel_calls=4, dtype=(tf.float32, tf.int32)):
-    """ Prepare the augmentation pipeline for use within keras
+    """Prepare the augmentation pipeline for use within keras
     Args:
         params (dict):
             The parameters for the augmentation
@@ -462,27 +479,27 @@ def prepare_keras_aug(params, parallel_calls=4, dtype=(tf.float32, tf.int32)):
             Zoom(
                 prob=params["affine_prob"],
                 min_zoom=params["scale_min"],
-                max_zoom=params["scale_max"]
+                max_zoom=params["scale_max"],
             ),
-            Flip(prob=params['flip_prob']),
-            Rot90(prob=params['rotate_prob'], rotate_count=params['rotate_count']),
+            Flip(prob=params["flip_prob"]),
+            Rot90(prob=params["rotate_prob"], rotate_count=params["rotate_count"]),
             GaussianBlur(
                 params["gaussian_blur_prob"],
                 min_std=params["gaussian_blur_min"],
-                max_std=params["gaussian_blur_max"]
+                max_std=params["gaussian_blur_max"],
             ),
             LinearContrast(
-                prob=params['contrast_prob'],
-                min_factor=params['contrast_min'],
-                max_factor=params['contrast_max']
+                prob=params["contrast_prob"],
+                min_factor=params["contrast_min"],
+                max_factor=params["contrast_max"],
             ),
             GaussianNoise(
-                prob=params['gaussian_noise_prob'],
-                min_std=params['gaussian_noise_min'],
-                max_std=params['gaussian_noise_max']
+                prob=params["gaussian_noise_prob"],
+                min_std=params["gaussian_noise_min"],
+                max_std=params["gaussian_noise_max"],
             ),
         ],
         parallel_calls=parallel_calls,
-        dtype=dtype
-        )
+        dtype=dtype,
+    )
     return augmenter

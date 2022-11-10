@@ -72,6 +72,7 @@ def test_train():
         params["quantile"] = 0.3
         params["ema"] = 0.01
         params["confidence_thresholds"] = [0.1, 0.9]
+        params["mixup_prob"] = 0.0
         trainer = PromixNaive(params)
         trainer.train()
 
@@ -120,7 +121,7 @@ def prepare_activity_df():
                 "imaging_platform": ["test"] * 6,
                 "dataset": ["test"] * 6,
                 "marker": ["CD4"] * 6 if i % 2 == 0 else "CD8",
-                "prediction": [0.9, 0.1, 0.1, 0.7, 0.7, 0.1],
+                "prediction": [0.9, 0.1, 0.1, 0.7, 0.7, 0.2],
             }
         )
         activity_df_list.append(activity_df)
@@ -211,3 +212,22 @@ def test_batchwise_loss_selection():
 
     # check that they are equal
     assert np.array_equal(loss_mask[0], loss_mask[1])
+
+
+def test_quantile_scheduler():
+    params = toml.load("cell_classification/configs/params.toml")
+    params["test"] = True
+    trainer = PromixNaive(params)
+    quantile_start = params["quantile"]
+    quantile_end = params["quantile_end"]
+    quantile_warmup_steps = params["quantile_warmup_steps"]
+    step_0_quantile = trainer.quantile_scheduler(0)
+    step_half_warmpup_quantile = trainer.quantile_scheduler(quantile_warmup_steps // 2)
+    step_warump_quantile = trainer.quantile_scheduler(quantile_warmup_steps)
+    step_n_quantile = trainer.quantile_scheduler(quantile_warmup_steps*2)
+
+    # check that the output has the expected values
+    assert step_0_quantile == quantile_start
+    assert step_half_warmpup_quantile == (quantile_start + quantile_end) / 2
+    assert step_warump_quantile == quantile_end
+    assert step_n_quantile == quantile_end
