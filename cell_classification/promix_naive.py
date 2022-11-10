@@ -35,16 +35,11 @@ class PromixNaive(ModelBuilder):
         Args:
             step (int): current step
         """
-        return np.min(
-            [
-                (
+        return np.min([(
                     self.quantile_start
                     + ((self.quantile_end - self.quantile_start) * step)
                     / self.quantile_warmup_steps
-                ),
-                self.quantile_end,
-            ]
-        )
+                ), self.quantile_end])
 
     @staticmethod
     def prep_batches_promix(batch):
@@ -130,10 +125,7 @@ class PromixNaive(ModelBuilder):
             )
         else:
             x_mplex_aug_mix, x_binary_aug_mix, y_aug_mix, loss_mask_aug_mix = (
-                x_mplex_aug,
-                x_binary_aug,
-                y_aug,
-                loss_mask_aug,
+                x_mplex_aug, x_binary_aug, y_aug, loss_mask_aug,
             )
             loss_mask_aug_mix = tf.cast(loss_mask_aug_mix, tf.float32)
             x_binary_aug_mix = tf.cast(x_binary_aug_mix, tf.float32)
@@ -202,15 +194,8 @@ class PromixNaive(ModelBuilder):
                 loss_mask *= tf.cast(tf.squeeze(batch["binary_mask"], -1), tf.float32)
                 # augment batches and do train_step
                 train_loss, x_aug, y_gt_aug, _, _, loss_mask_aug = train_step(
-                    self.model,
-                    self.optimizer,
-                    self.loss_fn,
-                    self.aug_fn,
-                    self.mixup_fn,
-                    loss_mask,
-                    x_mplex,
-                    x_binary,
-                    y,
+                    self.model, self.optimizer, self.loss_fn, self.aug_fn, self.mixup_fn,
+                    loss_mask, x_mplex, x_binary, y
                 )
                 self.train_loss_tmp.append(train_loss)
                 self.step += 1
