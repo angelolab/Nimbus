@@ -25,7 +25,7 @@ data_prep = SegmentationTFRecords(
     normalization_dict_path=os.path.normpath(
        "C:/Users/lorenz/Desktop/angelo_lab/TONIC/normalization_dict.json"
     ),
-    normalization_quantile=0.99,
+    normalization_quantile=0.999,
     cell_type_key="cell_meta_cluster",
     sample_key="fov",
     segmentation_fname="cell_segmentation",

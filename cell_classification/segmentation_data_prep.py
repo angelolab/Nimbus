@@ -1,4 +1,3 @@
-from tkinter import E
 from tifffile import imread
 from skimage.segmentation import find_boundaries
 import tensorflow as tf
