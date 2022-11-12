@@ -102,7 +102,7 @@ class ModelBuilder:
             self.model = PanopticNet(
                 backbone=self.params["backbone"], input_shape=self.params["input_shape"],
                 norm_method="std", num_semantic_classes=self.params["classes"],
-                create_semantic_head=create_semantic_head,
+                create_semantic_head=create_semantic_head, location=self.params["location"],
             )
 
         loss = {}

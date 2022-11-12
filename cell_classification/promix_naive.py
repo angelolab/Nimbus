@@ -2,7 +2,7 @@ from deepcell.utils.train_utils import rate_scheduler, get_callbacks, count_gpus
 from segmentation_data_prep import parse_dict, feature_description
 from tensorflow.keras.optimizers.schedules import CosineDecay
 from tensorflow.keras.callbacks import LearningRateScheduler
-from deepcell.model_zoo.panopticnet import PanopticNet
+from augmentation_pipeline import prepare_keras_aug, MixUp
 from tensorflow.keras.optimizers import SGD, Adam
 from semantic_head import create_semantic_head
 from model_builder import ModelBuilder
@@ -22,7 +22,42 @@ class PromixNaive(ModelBuilder):
         self.num_gpus = count_gpus()
         self.loss_fn = self.prep_loss()
         self.quantile = self.params["quantile"]
+        self.quantile_start = self.params["quantile"]
+        self.quantile_end = self.params["quantile_end"]
+        self.quantile_warmup_steps = self.params["quantile_warmup_steps"]
         self.class_wise_loss_quantiles = {}
+        self.aug_fn = prepare_keras_aug(params, dtype=(tf.float32, tf.uint8))
+        self.mixup_fn = MixUp(prob=params["mixup_prob"], alpha=params["mixup_alpha"])
+
+    def quantile_scheduler(self, step):
+        """Linear scheduler for quantile
+        Args:
+            step (int): current step
+        """
+        return np.min([(
+                    self.quantile_start
+                    + ((self.quantile_end - self.quantile_start) * step)
+                    / self.quantile_warmup_steps
+                ), self.quantile_end])
+
+    @staticmethod
+    def prep_batches_promix(batch):
+        """Preprocess batches for training
+        Args:
+            batch (dict):
+                Dictionary of tensors and strings containing data from a single batch
+        Returns:
+            mplex_img (tf.Tensor):
+                Batch of mplex images
+            binary_mask (tf.Tensor)
+                Batch of binary mask images
+            targets (tf.Tensor):
+                Batch of labels
+        """
+        targets = batch["marker_activity_mask"]
+        mplex_img = batch["mplex_img"]
+        binary_mask = tf.cast(batch["binary_mask"], tf.float32)
+        return mplex_img, binary_mask, targets
 
     def matched_high_confidence_selection_thresholds(self):
         """Returns a dictionary with the thresholds for the high confidence selection"""
@@ -57,27 +92,54 @@ class PromixNaive(ModelBuilder):
         )
 
     @staticmethod  # with @tf.function 0.4 s/batch, without 0.15 s/batch on notebook
-    def train_step(model, optimizer, loss_fn, aug_fn, loss_mask, x, y_gt):
+    def train_step(model, optimizer, loss_fn, aug_fn, mixup_fn, loss_mask, x_mplex, x_binary, y):
         """Performs a training step
         Args:
             model (tf.keras.Model): model to train
             optimizer (tf.keras.optimizers.Optimizer): optimizer to use
             loss_fn (tf.keras.losses.Loss): loss function to use
             loss_mask (tf.Tensor): mask to apply to loss
-            x (tf.Tensor): input data
-            y_gt (tf.Tensor): ground truth labels
+            x_mplex (tf.Tensor): input mplex image
+            x_binary (tf.Tensor): input binary cell mask
+            y (tf.Tensor): ground truth labels
         Returns:
             tf.Tensor: loss value
         """
-        x_aug, loss_mask_aug, y_gt_aug = aug_fn(x, loss_mask, y_gt)
+        # run data through augmentation, floats [x_mplex] and ints [loss_mask, y, x_binary]
+        # separately to use correct interpolation [bilinear, nearest]
+        loss_mask = tf.expand_dims(tf.cast(loss_mask, tf.uint8), -1)
+        x_binary = tf.cast(x_binary, tf.uint8)
+        x_mplex_aug, cat = aug_fn(x_mplex, tf.concat([loss_mask, y, x_binary], axis=-1))
+        loss_mask_aug, y_aug, x_binary_aug = tf.split(
+            cat, [loss_mask.shape[-1], y.shape[-1], x_binary.shape[-1]], axis=-1
+        )
+        # add unspecific mask from y_aug and background from x_binary_aug to loss_mask and set
+        # y_aug to be in range [0,1] before mixup
+        loss_mask_aug = tf.where(y_aug == 2, 0, loss_mask_aug)
+        y_aug = tf.clip_by_value(y_aug, 0, 1)
+        # run mixup
+        if mixup_fn.prob > 0.0:
+            x_mplex_aug_mix, x_binary_aug_mix, y_aug_mix, loss_mask_aug_mix = mixup_fn(
+                x_mplex_aug, x_binary_aug, y_aug, loss_mask_aug
+            )
+        else:
+            x_mplex_aug_mix, x_binary_aug_mix, y_aug_mix, loss_mask_aug_mix = (
+                x_mplex_aug, x_binary_aug, y_aug, loss_mask_aug,
+            )
+            loss_mask_aug_mix = tf.cast(loss_mask_aug_mix, tf.float32)
+            x_binary_aug_mix = tf.cast(x_binary_aug_mix, tf.float32)
+        background = tf.cast(tf.where(x_binary_aug_mix == 0, 1, 0), tf.float32)
+        # add background pixels to loss mask and prepare model input x_aug_mix
+        loss_mask_aug_mix += background
+        x_aug_mix = tf.concat([x_mplex_aug_mix, x_binary_aug_mix], axis=-1)
         with tf.GradientTape() as tape:
-            y_pred = model(x, training=True)
-            loss_img = loss_fn(y_gt, y_pred)
-            loss_img *= loss_mask
+            y_pred = model(x_aug_mix, training=True)
+            loss_img = loss_fn(y_aug_mix, y_pred)
+            loss_img *= tf.squeeze(loss_mask_aug_mix, axis=-1)
             loss = tf.reduce_mean(loss_img)
         gradients = tape.gradient(loss, model.trainable_variables)
         optimizer.apply_gradients(zip(gradients, model.trainable_variables))
-        return loss
+        return loss, x_aug_mix, y_aug_mix, y_pred, loss_img, loss_mask_aug_mix
 
     def train(self):
         """Calls prep functions and starts training loops"""
@@ -98,13 +160,15 @@ class PromixNaive(ModelBuilder):
         while self.step < self.params["num_steps"]:
             for batch in tqdm(self.train_dataset):
                 # prepare loss mask with unaugmented batches
-                x, y = self.prep_batches(batch)
+                x_mplex, x_binary, y = self.prep_batches_promix(batch)
+                x = tf.concat([x_mplex, x_binary], axis=-1)
                 y_pred = self.model(x, training=False)
                 loss_img = self.loss_fn(y, y_pred)
                 uniques, loss_per_cell = tf.map_fn(
                     self.reduce_to_cells,
                     (loss_img, batch["instance_mask"]),
                     infer_shape=False,
+                    parallel_iterations=4,
                     fn_output_signature=[
                         tf.RaggedTensorSpec(shape=[None], dtype=tf.int32, ragged_rank=0),
                         tf.RaggedTensorSpec(shape=[None], dtype=tf.float32, ragged_rank=0),
@@ -128,25 +192,24 @@ class PromixNaive(ModelBuilder):
                 )
                 loss_mask *= tf.cast(tf.squeeze(batch["binary_mask"], -1), tf.float32)
                 # augment batches and do train_step
-
-                def aug_fn(x, y, z):
-                    return (x, y, z)
-
-                train_loss = train_step(
-                    self.model, self.optimizer, self.loss_fn, aug_fn, loss_mask, x, y
+                train_loss, x_aug, y_gt_aug, _, _, loss_mask_aug = train_step(
+                    self.model, self.optimizer, self.loss_fn, self.aug_fn, self.mixup_fn,
+                    loss_mask, x_mplex, x_binary, y
                 )
                 self.train_loss_tmp.append(train_loss)
                 self.step += 1
-                self.tensorboard_callbacks(x, y)
+                self.quantile = self.quantile_scheduler(self.step)
+                self.tensorboard_callbacks(x_aug, y_gt_aug)
                 if self.step > self.params["num_steps"]:
                     break
                 # custom tensorboard callbacks
                 if self.step % self.params["snap_steps"] == 0:
                     with self.summary_writer.as_default():
+                        tf.summary.text("marker", batch["marker"][0], step=self.step)
                         tf.summary.image(
                             "loss_mask",
-                            tf.cast(tf.expand_dims(loss_mask[:1, ...], axis=-1), tf.float32)
-                            + x[:1, ..., 1:2] * 0.25,
+                            tf.cast(loss_mask_aug[:1, ...], tf.float32)
+                            - tf.math.abs(x_aug[:1, ..., 1:2] * -1) * 0.25,
                             step=self.step,
                         )
                         for key in list(self.class_wise_loss_quantiles.keys()):
@@ -156,6 +219,7 @@ class PromixNaive(ModelBuilder):
                                     self.class_wise_loss_quantiles[key][class_],
                                     step=self.step,
                                 )
+                        tf.summary.scalar("quantile_thresh", self.quantile, step=self.step)
                     # save self.class_wise_loss_quantiles as toml
                     with open(
                         os.path.join(self.params["log_dir"], "loss_quantiles.toml"), "w"
@@ -197,7 +261,8 @@ class PromixNaive(ModelBuilder):
             activity_df (pd.DataFrame): dataframe with columns "labels", "activity" and "loss"
             instance_mask (tf.Tensor): instance_masks
         Returns:
-            tf.Tensor: loss_mask
+            tf.Tensor: loss_mask that has ones for every pixel that is selected for loss
+            calculation and zeros for the background and all not selected cells
         """
         loss_selection = []
         for df, mask, mark in zip(activity_df, instance_mask, marker):
@@ -223,7 +288,7 @@ class PromixNaive(ModelBuilder):
         return tf.stack(loss_selection)
 
     def class_wise_loss_selection(self, positive_df, negative_df, mark):
-        """Selects the cells with the lowest loss for each class and runs
+        """Selects the cells with the lowest loss for each class
         Args:
             positive_df (pd.DataFrame): dataframe with columns "labels", "activity" and "loss"
             negative_df (pd.DataFrame): dataframe with columns "labels", "activity" and "loss"
