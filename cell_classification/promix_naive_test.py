@@ -72,7 +72,7 @@ def test_train():
         params["quantile"] = 0.3
         params["ema"] = 0.01
         params["confidence_thresholds"] = [0.1, 0.9]
-        params["mixup_prob"] = 0.0
+        params["mixup_prob"] = 0.5
         trainer = PromixNaive(params)
         trainer.train()
 

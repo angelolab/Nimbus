@@ -3,7 +3,6 @@ from segmentation_data_prep import parse_dict, feature_description
 from tensorflow.keras.optimizers.schedules import CosineDecay
 from tensorflow.keras.callbacks import LearningRateScheduler
 from augmentation_pipeline import prepare_keras_aug, MixUp
-from deepcell.model_zoo.panopticnet import PanopticNet
 from tensorflow.keras.optimizers import SGD, Adam
 from semantic_head import create_semantic_head
 from model_builder import ModelBuilder

@@ -36,6 +36,7 @@ quantile_end = 0.9
 quantile_warmup_steps = 100000
 confidence_thresholds = [0.1, 0.9]
 ema = 0.01
+location = false
 [loss_kwargs]
 from_logits = false
 label_smoothing = 0.1
