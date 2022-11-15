@@ -390,7 +390,7 @@ def test_get_marker_activity_mask():
         ).all()
 
 
-@pytest.mark.parametrize("tile_size", [[256, 256], [256, 200], [200, 256], [200, 200]])
+@pytest.mark.parametrize("tile_size", [[256, 256], [128, 256], [256, 128], [128, 128]])
 def test_tile_example(tile_size):
     marker_activity = pd.DataFrame(
         {
@@ -421,7 +421,7 @@ def test_tile_example(tile_size):
     tiled_examples = data_prep.tile_example(example)
 
     # check if the correct number of tiles got returned
-    assert len(tiled_examples) == int(np.ceil(512 / tile_size[0]) * np.ceil(512 / tile_size[1]))
+    assert len(tiled_examples) == int(np.floor(512 / tile_size[0]) * np.floor(512 / tile_size[1]))
 
     # check if the correct spatial dimensions got returned and dtype is correct
     for key in ["mplex_img", "binary_mask", "instance_mask", "marker_activity_mask"]:
@@ -456,6 +456,14 @@ def test_tile_example(tile_size):
     tiled_examples = data_prep.tile_example(example)
     assert tiled_examples[0]["instance_mask"].ndim == 3
     assert tiled_examples[1]["instance_mask"].ndim == 3
+
+    # check if tiles are excluded if they don't contain any cells when setting
+    # exclude_background_tiles=True
+    data_prep.exclude_background_tiles = True
+    tiled_examples = data_prep.tile_example(example)
+    assert len(tiled_examples) < int(np.ceil(512 / tile_size[0]) * np.ceil(512 / tile_size[1]))
+    for example in tiled_examples:
+        assert example["activity_df"].activity.sum() > 0
 
 
 def test_prepare_example():
