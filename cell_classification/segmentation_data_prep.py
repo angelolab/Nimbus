@@ -19,7 +19,7 @@ class SegmentationTFRecords:
         tile_size, stride, tf_record_path, selected_markers=None, normalization_dict_path=None,
         normalization_quantile=0.999, cell_type_key="cluster_labels", sample_key="SampleID",
         segmentation_fname="cell_segmentation", segment_label_key="labels",
-        segmentation_naming_convention=None, exlude_background_tiles=False
+        segmentation_naming_convention=None, exclude_background_tiles=False
     ):
         """Initializes SegmentationTFRecords and loads everything except the images
 
@@ -59,9 +59,8 @@ class SegmentationTFRecords:
                 Function that takes in the sample name and returns the path to the segmentation
                 .tiff file. Default is None, then it is assumed that the segmentation file is in
                 the sample folder and is named $segmentation_fname.tiff
-            exlude_background_tiles (bool):
-                Whether to exclude the all tiles that only contain background or marker-negative
-                cells
+            exclude_background_tiles (bool):
+                Whether to exclude the all tiles that only contain background
         """
         self.selected_markers = selected_markers
         self.data_dir = data_dir
@@ -79,7 +78,7 @@ class SegmentationTFRecords:
         self.tile_size = tile_size
         self.stride = stride
         self.segmentation_naming_convention = segmentation_naming_convention
-        self.exlude_background_tiles = exlude_background_tiles
+        self.exclude_background_tiles = exclude_background_tiles
 
     def get_image(self, data_folder, marker):
         """Loads the images from a single data_folder
@@ -256,9 +255,6 @@ class SegmentationTFRecords:
         num_tiles = tiled_examples[spatial_keys[0]].shape[0]
         example_list = []
         for tile in range(num_tiles):
-            if self.exlude_background_tiles and \
-                    np.sum(tiled_examples["marker_activity_mask"]) == 0:
-                continue
             example_out = {}
             for key in spatial_keys:
                 example_out[key] = tiled_examples[key][tile]
@@ -270,8 +266,10 @@ class SegmentationTFRecords:
             example_out["activity_df"] = example["activity_df"].loc[
                 example["activity_df"].labels.isin(label_subset)
             ]
+            # only add the tile to example_list if it contains positive cells
+            if self.exclude_background_tiles and example_out["activity_df"].activity.sum() == 0:
+                continue
             example_list.append(example_out)
-
         return example_list
 
     def load_and_check_input(self):
