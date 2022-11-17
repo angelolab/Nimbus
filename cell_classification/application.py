@@ -9,6 +9,7 @@ def cell_preprocess(image, **kwargs):
     Returns:
         np.array: processed image array
     """
+    output = np.copy(image)
     if len(image.shape) != 4:
         raise ValueError("Image data must be 4D, got image of shape {}".format(image.shape))
 
@@ -20,10 +21,10 @@ def cell_preprocess(image, **kwargs):
             norm_factor = normalization_dict[marker]
         else:
             print("Norm_factor not found for marker {}".format(marker))
-            norm_factor = np.quantile(image[..., 0], 0.999)
-        image[..., 0] /= norm_factor
-        image = image.clip(0, 1)
-    return image
+            norm_factor = np.quantile(output[..., 0], 0.999)
+        output[..., 0] /= norm_factor
+        output = output.clip(0, 1)
+    return output
 
 
 def cell_postprocess(model_output):
