@@ -41,6 +41,10 @@ class ModelBuilder:
         )
         dataset = dataset.map(parse_dict, num_parallel_calls=tf.data.AUTOTUNE)
 
+        # filter out sparse samples
+        if "filter_quantile" in self.params.keys():
+            dataset = self.quantile_filter(dataset)
+
         # split into train and validation
         self.validation_dataset = dataset.take(self.params["num_validation"])
         self.train_dataset = dataset.skip(self.params["num_validation"])
@@ -355,6 +359,43 @@ class ModelBuilder:
                 layer.add_loss(lambda layer=layer: tf.keras.regularizers.l2(alpha)(layer.kernel))
             if hasattr(layer, "bias_regularizer") and layer.use_bias:
                 layer.add_loss(lambda layer=layer: tf.keras.regularizers.l2(alpha)(layer.bias))
+
+    def quantile_filter(self, dataset):
+        """Filter out training examples that contain less than a certain quantile per marker of
+        positive cells
+        Args:
+            dataset (tf.data.Dataset):
+                Dataset to filter
+        Returns:
+            dataset (tf.data.Dataset):
+                Filtered dataset
+        """
+        num_pos_dict = {}
+        for example in dataset:
+            marker = tf.get_static_value(example["marker"]).decode("utf-8")
+            activity_df = pd.read_json(tf.get_static_value(example["activity_df"]).decode("utf-8"))
+            if marker not in num_pos_dict.keys():
+                num_pos_dict[marker] = []
+            num_pos_dict[marker].append(np.sum(activity_df.activity == 1))
+        quantile_dict = {}
+        for marker, pos_list in num_pos_dict.items():
+            quantile_dict[marker] = np.quantile(pos_list, self.params["filter_quantile"])
+
+        def predicate(marker, activity_df):
+            """Helper function that returns true if the number of positive cells is above the
+            quantile threshold
+            """
+            marker = tf.get_static_value(marker).decode("utf-8")
+            activity_df = pd.read_json(tf.get_static_value(activity_df).decode("utf-8"))
+            num_pos = tf.reduce_sum(tf.constant(activity_df.activity == 1, dtype=tf.float32))
+            return tf.greater_equal(num_pos, quantile_dict[marker])
+
+        dataset = dataset.filter(
+            lambda example: tf.py_function(
+                predicate, [example["marker"], example["activity_df"]], tf.bool
+            )
+        )
+        return dataset
 
 
 if __name__ == "__main__":

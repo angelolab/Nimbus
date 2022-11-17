@@ -515,6 +515,7 @@ def parse_dict(deserialized_dict):
         example[key] = tf.strings.unicode_encode(
             tf.cast(deserialized_dict[key], tf.int32), "UTF-8"
         )
+        example[key] = example[key]
         if hasattr(example[key], "numpy"):
             example[key] = example[key].numpy().decode()
     for key in ["binary_mask", "marker_activity_mask"]:

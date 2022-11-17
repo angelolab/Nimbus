@@ -77,6 +77,10 @@ class PromixNaive(ModelBuilder):
         )
         dataset = dataset.map(parse_dict, num_parallel_calls=tf.data.AUTOTUNE)
 
+        # filter out sparse samples
+        if "filter_quantile" in self.params.keys():
+            dataset = self.quantile_filter(dataset)
+
         # split into train and validation
         self.validation_dataset = dataset.take(self.params["num_validation"])
         self.train_dataset = dataset.skip(self.params["num_validation"])

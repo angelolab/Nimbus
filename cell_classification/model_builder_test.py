@@ -7,6 +7,7 @@ import os
 import toml
 from model_builder import ModelBuilder
 import h5py
+from copy import deepcopy
 
 tf.config.run_functions_eagerly(True)
 
@@ -291,3 +292,30 @@ def test_add_weight_decay():
         loss_without_weight_decay = trainer_no_decay.validate(trainer.validation_dataset)
 
         assert loss_with_weight_decay > loss_without_weight_decay
+
+
+def test_quantile_filter():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
+        data_prep.tf_record_path = temp_dir
+        data_prep.make_tf_record()
+        tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
+        params = toml.load("cell_classification/configs/params.toml")
+        params["record_path"] = tf_record_path
+        params["path"] = temp_dir
+        params["experiment"] = "test"
+        params["num_steps"] = 20
+        params["num_validation"] = 0
+        params["batch_size"] = 1
+        trainer = ModelBuilder(params)
+        trainer.prep_data()
+        for i, _ in enumerate(trainer.train_dataset):
+            continue
+        params["filter_quantile"] = 0.8
+        trainer = ModelBuilder(params)
+        trainer.prep_data()
+        for j, example in enumerate(trainer.train_dataset):
+            continue
+
+        # check if we really reduced the number of examples
+        assert i > j
