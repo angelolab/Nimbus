@@ -18,6 +18,7 @@ import pandas as pd
 from loss import Loss
 from tqdm import tqdm
 from time import time
+import json
 
 
 class ModelBuilder:
@@ -375,13 +376,26 @@ class ModelBuilder:
                 Filtered dataset
         """
         print("Filtering out sparse training examples...")
-        num_pos_dict = {}
-        for example in tqdm(dataset):
-            marker = tf.get_static_value(example["marker"]).decode("utf-8")
-            activity_df = pd.read_json(tf.get_static_value(example["activity_df"]).decode("utf-8"))
-            if marker not in num_pos_dict.keys():
-                num_pos_dict[marker] = []
-            num_pos_dict[marker].append(np.sum(activity_df.activity == 1))
+        self.num_pos_dict_path = self.params["record_path"].split(".tfrecord")[0] + \
+            "num_pos_dict.json"
+        if os.path.exists(self.num_pos_dict_path):
+            with open(self.num_pos_dict_path, "r") as f:
+                num_pos_dict = json.load(f)
+        else:
+            num_pos_dict = {}
+            for example in tqdm(dataset):
+                marker = tf.get_static_value(example["marker"]).decode("utf-8")
+                activity_df = pd.read_json(
+                    tf.get_static_value(example["activity_df"]).decode("utf-8")
+                )
+                if marker not in num_pos_dict.keys():
+                    num_pos_dict[marker] = []
+                num_pos_dict[marker].append(int(np.sum(activity_df.activity == 1)))
+
+            # save num_pos_dict to file
+            with open(self.num_pos_dict_path, "w") as f:
+                json.dump(num_pos_dict, f)
+
         quantile_dict = {}
         for marker, pos_list in num_pos_dict.items():
             quantile_dict[marker] = np.quantile(pos_list, self.params["filter_quantile"])

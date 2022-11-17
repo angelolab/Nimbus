@@ -7,8 +7,8 @@ import os
 import toml
 from model_builder import ModelBuilder
 import h5py
-from copy import deepcopy
 import pandas as pd
+import json
 
 tf.config.run_functions_eagerly(True)
 
@@ -336,3 +336,11 @@ def test_quantile_filter():
             num_cells for num_cells in unfiltered_num_cells if num_cells not in filtered_num_cells
         ]
         assert np.max(diff) < np.min(filtered_num_cells)
+
+        # check if dataset_num_pos_dict.json was saved and contains the right values
+        assert os.path.exists(trainer.num_pos_dict_path)
+
+        with open(trainer.num_pos_dict_path, "r") as f:
+            num_pos_dict = json.load(f)
+
+        assert np.array_equal(sorted(num_pos_dict["CD4"]), sorted(unfiltered_num_cells))

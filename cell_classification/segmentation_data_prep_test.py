@@ -80,6 +80,7 @@ def test_get_image():
 
 def prepare_test_data_folders(num_folders, temp_dir, selected_markers, random=False, scale=[1.0]):
     data_folders = []
+    np.random.seed(42)
     if len(scale) != num_folders:
         scale = [1.0] * num_folders
     for i in range(num_folders):
