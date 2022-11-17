@@ -67,34 +67,6 @@ class PromixNaive(ModelBuilder):
         loss = self.loss_fn(targets, y_pred)
         self.confidence_loss_thresholds = {"positive": loss[0], "negative": loss[1]}
 
-    def prep_data(self):
-        """Prepares training and validation data"""
-        # make datasets and splits
-        dataset = tf.data.TFRecordDataset(self.params["record_path"])
-        dataset = dataset.map(
-            lambda x: tf.io.parse_single_example(x, feature_description),
-            num_parallel_calls=tf.data.AUTOTUNE,
-        )
-        dataset = dataset.map(parse_dict, num_parallel_calls=tf.data.AUTOTUNE)
-
-        # filter out sparse samples
-        if "filter_quantile" in self.params.keys():
-            dataset = self.quantile_filter(dataset)
-
-        # split into train and validation
-        self.validation_dataset = dataset.take(self.params["num_validation"])
-        self.train_dataset = dataset.skip(self.params["num_validation"])
-
-        # shuffle, batch and prefetch the training data
-        self.train_dataset = self.train_dataset.shuffle(self.params["shuffle_buffer_size"]).batch(
-            self.params["batch_size"]
-        )
-        self.train_dataset = self.train_dataset.prefetch(tf.data.AUTOTUNE)
-
-        self.validation_dataset = self.validation_dataset.batch(
-            self.params["batch_size"] * np.max([self.num_gpus, 1])
-        )
-
     @staticmethod  # with @tf.function 0.4 s/batch, without 0.15 s/batch on notebook
     def train_step(model, optimizer, loss_fn, aug_fn, mixup_fn, loss_mask, x_mplex, x_binary, y):
         """Performs a training step
@@ -154,6 +126,9 @@ class PromixNaive(ModelBuilder):
         self.matched_high_confidence_selection_thresholds()
         train_step = self.train_step
 
+        # make transformations on the training dataset
+        self.train_dataset = self.train_dataset.prefetch(tf.data.AUTOTUNE)
+
         with open(os.path.join(self.params["model_dir"], "params.toml"), "w") as f:
             toml.dump(self.params, f)
         self.summary_writer = tf.summary.create_file_writer(self.params["log_dir"])
@@ -179,13 +154,14 @@ class PromixNaive(ModelBuilder):
                     ],
                 )
                 batch["activity_df"] = [
-                    pd.read_json(df.decode()) for df in batch["activity_df"].numpy()
+                    pd.read_json(df.decode()) for df in tf.get_static_value(batch["activity_df"])
                 ]
                 batch["activity_df"] = [
                     df.merge(
-                        pd.DataFrame(
-                            {"labels": uniques[i].numpy(), "loss": loss_per_cell[i].numpy()}
-                        ),
+                        pd.DataFrame({
+                            "labels": tf.get_static_value(uniques[i]),
+                            "loss": tf.get_static_value(loss_per_cell[i])
+                        }),
                         on="labels",
                     )
                     for i, df in enumerate(batch["activity_df"])
@@ -273,7 +249,7 @@ class PromixNaive(ModelBuilder):
             if df.shape[0] == 0:
                 loss_selection.append(tf.squeeze(tf.zeros_like(mask, tf.float32)))
                 continue
-            mark = mark.numpy().decode()
+            mark = tf.get_static_value(mark).decode()
 
             positive_df = df[df["activity"] == 1]
             negative_df = df[df["activity"] == 0]

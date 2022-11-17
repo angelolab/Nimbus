@@ -55,15 +55,6 @@ class ModelBuilder:
         self.train_dataset = self.train_dataset.shuffle(self.params["shuffle_buffer_size"]).batch(
             self.params["batch_size"] * np.max([self.num_gpus, 1])
         )
-        augmentation_pipeline = get_augmentation_pipeline(self.params)
-        tf_aug = prepare_tf_aug(augmentation_pipeline)
-        self.train_dataset = self.train_dataset.map(
-            lambda x: py_aug(x, tf_aug), num_parallel_calls=tf.data.AUTOTUNE
-        )
-        self.train_dataset = self.train_dataset.map(
-            self.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
-        )
-        self.train_dataset = self.train_dataset.prefetch(tf.data.AUTOTUNE)
         self.validation_dataset = self.validation_dataset.batch(
             self.params["batch_size"] * np.max([self.num_gpus, 1])
         )
@@ -138,7 +129,20 @@ class ModelBuilder:
     def train(self):
         """Calls prep functions and starts training loops"""
         print("Training on", self.num_gpus, "GPUs.")
+        # initialize data and model
         self.prep_data()
+
+        # make transformations on the training dataset
+        augmentation_pipeline = get_augmentation_pipeline(self.params)
+        tf_aug = prepare_tf_aug(augmentation_pipeline)
+        self.train_dataset = self.train_dataset.map(
+            lambda x: py_aug(x, tf_aug), num_parallel_calls=tf.data.AUTOTUNE
+        )
+        self.train_dataset = self.train_dataset.map(
+            self.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
+        )
+        self.train_dataset = self.train_dataset.prefetch(tf.data.AUTOTUNE)
+
         if self.num_gpus > 1:
             # set up distributed training
             self.strategy = tf.distribute.MirroredStrategy()
@@ -370,8 +374,9 @@ class ModelBuilder:
             dataset (tf.data.Dataset):
                 Filtered dataset
         """
+        print("Filtering out sparse training examples...")
         num_pos_dict = {}
-        for example in dataset:
+        for example in tqdm(dataset):
             marker = tf.get_static_value(example["marker"]).decode("utf-8")
             activity_df = pd.read_json(tf.get_static_value(example["activity_df"]).decode("utf-8"))
             if marker not in num_pos_dict.keys():
