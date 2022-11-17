@@ -18,6 +18,7 @@ import pandas as pd
 from loss import Loss
 from tqdm import tqdm
 from time import time
+import json
 
 
 class ModelBuilder:
@@ -41,6 +42,10 @@ class ModelBuilder:
         )
         dataset = dataset.map(parse_dict, num_parallel_calls=tf.data.AUTOTUNE)
 
+        # filter out sparse samples
+        if "filter_quantile" in self.params.keys():
+            dataset = self.quantile_filter(dataset)
+
         # split into train and validation
         self.validation_dataset = dataset.take(self.params["num_validation"])
         self.train_dataset = dataset.skip(self.params["num_validation"])
@@ -51,15 +56,6 @@ class ModelBuilder:
         self.train_dataset = self.train_dataset.shuffle(self.params["shuffle_buffer_size"]).batch(
             self.params["batch_size"] * np.max([self.num_gpus, 1])
         )
-        augmentation_pipeline = get_augmentation_pipeline(self.params)
-        tf_aug = prepare_tf_aug(augmentation_pipeline)
-        self.train_dataset = self.train_dataset.map(
-            lambda x: py_aug(x, tf_aug), num_parallel_calls=tf.data.AUTOTUNE
-        )
-        self.train_dataset = self.train_dataset.map(
-            self.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
-        )
-        self.train_dataset = self.train_dataset.prefetch(tf.data.AUTOTUNE)
         self.validation_dataset = self.validation_dataset.batch(
             self.params["batch_size"] * np.max([self.num_gpus, 1])
         )
@@ -134,7 +130,20 @@ class ModelBuilder:
     def train(self):
         """Calls prep functions and starts training loops"""
         print("Training on", self.num_gpus, "GPUs.")
+        # initialize data and model
         self.prep_data()
+
+        # make transformations on the training dataset
+        augmentation_pipeline = get_augmentation_pipeline(self.params)
+        tf_aug = prepare_tf_aug(augmentation_pipeline)
+        self.train_dataset = self.train_dataset.map(
+            lambda x: py_aug(x, tf_aug), num_parallel_calls=tf.data.AUTOTUNE
+        )
+        self.train_dataset = self.train_dataset.map(
+            self.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
+        )
+        self.train_dataset = self.train_dataset.prefetch(tf.data.AUTOTUNE)
+
         if self.num_gpus > 1:
             # set up distributed training
             self.strategy = tf.distribute.MirroredStrategy()
@@ -355,6 +364,57 @@ class ModelBuilder:
                 layer.add_loss(lambda layer=layer: tf.keras.regularizers.l2(alpha)(layer.kernel))
             if hasattr(layer, "bias_regularizer") and layer.use_bias:
                 layer.add_loss(lambda layer=layer: tf.keras.regularizers.l2(alpha)(layer.bias))
+
+    def quantile_filter(self, dataset):
+        """Filter out training examples that contain less than a certain quantile per marker of
+        positive cells
+        Args:
+            dataset (tf.data.Dataset):
+                Dataset to filter
+        Returns:
+            dataset (tf.data.Dataset):
+                Filtered dataset
+        """
+        print("Filtering out sparse training examples...")
+        self.num_pos_dict_path = self.params["record_path"].split(".tfrecord")[0] + \
+            "num_pos_dict.json"
+        if os.path.exists(self.num_pos_dict_path):
+            with open(self.num_pos_dict_path, "r") as f:
+                num_pos_dict = json.load(f)
+        else:
+            num_pos_dict = {}
+            for example in tqdm(dataset):
+                marker = tf.get_static_value(example["marker"]).decode("utf-8")
+                activity_df = pd.read_json(
+                    tf.get_static_value(example["activity_df"]).decode("utf-8")
+                )
+                if marker not in num_pos_dict.keys():
+                    num_pos_dict[marker] = []
+                num_pos_dict[marker].append(int(np.sum(activity_df.activity == 1)))
+
+            # save num_pos_dict to file
+            with open(self.num_pos_dict_path, "w") as f:
+                json.dump(num_pos_dict, f)
+
+        quantile_dict = {}
+        for marker, pos_list in num_pos_dict.items():
+            quantile_dict[marker] = np.quantile(pos_list, self.params["filter_quantile"])
+
+        def predicate(marker, activity_df):
+            """Helper function that returns true if the number of positive cells is above the
+            quantile threshold
+            """
+            marker = tf.get_static_value(marker).decode("utf-8")
+            activity_df = pd.read_json(tf.get_static_value(activity_df).decode("utf-8"))
+            num_pos = tf.reduce_sum(tf.constant(activity_df.activity == 1, dtype=tf.float32))
+            return tf.greater_equal(num_pos, quantile_dict[marker])
+
+        dataset = dataset.filter(
+            lambda example: tf.py_function(
+                predicate, [example["marker"], example["activity_df"]], tf.bool
+            )
+        )
+        return dataset
 
 
 if __name__ == "__main__":
