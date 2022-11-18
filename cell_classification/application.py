@@ -20,7 +20,7 @@ def cell_preprocess(image, **kwargs):
         if marker in normalization_dict.keys():
             norm_factor = normalization_dict[marker]
         else:
-            print("Norm_factor not found for marker {}".format(marker))
+            print("Norm_factor not found for marker {}, calculating directly from the image. ".format(marker))
             norm_factor = np.quantile(output[..., 0], 0.999)
         output[..., 0] /= norm_factor
         output = output.clip(0, 1)
