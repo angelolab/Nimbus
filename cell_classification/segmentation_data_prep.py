@@ -21,6 +21,7 @@ class SegmentationTFRecords:
         normalization_quantile=0.999, cell_type_key="cluster_labels", sample_key="SampleID",
         segmentation_fname="cell_segmentation", segment_label_key="labels",
         segmentation_naming_convention=None, exclude_background_tiles=False, resize=None,
+        img_suffix=".tiff"
     ):
         """Initializes SegmentationTFRecords and loads everything except the images
 
@@ -64,6 +65,8 @@ class SegmentationTFRecords:
                 Whether to exclude the all tiles that only contain background
             resize (float):
                 The resize factor to use for the images
+            img_suffix (str):
+                The suffix of the image files
         """
         self.selected_markers = selected_markers
         self.data_dir = data_dir
@@ -83,6 +86,7 @@ class SegmentationTFRecords:
         self.segmentation_naming_convention = segmentation_naming_convention
         self.exclude_background_tiles = exclude_background_tiles
         self.resize = resize
+        self.img_suffix = img_suffix
 
     def get_image(self, data_folder, marker):
         """Loads the images from a single data_folder
@@ -97,7 +101,7 @@ class SegmentationTFRecords:
             np.array:
                 The multiplexed image
         """
-        img = imread(os.path.join(data_folder, marker + ".tiff"))
+        img = imread(os.path.join(data_folder, marker + self.img_suffix))
         img = np.squeeze(img)
         if img.ndim == 2:
             img = np.expand_dims(img, axis=-1)
@@ -118,7 +122,9 @@ class SegmentationTFRecords:
                 The instance mask
         """
         if self.segmentation_naming_convention is None:
-            instance_mask = imread(os.path.join(data_folder, self.segmentation_fname + ".tiff"))
+            instance_mask = imread(
+                os.path.join(data_folder, self.segmentation_fname + self.img_suffix)
+            )
         else:
             sample_name = os.path.basename(data_folder)
             instance_mask = imread(self.segmentation_naming_convention(sample_name))
@@ -322,7 +328,7 @@ class SegmentationTFRecords:
         for marker in self.selected_markers:
             exists = False
             for folder in self.data_folders:
-                if os.path.exists(os.path.join(folder, marker + ".tiff")):
+                if os.path.exists(os.path.join(folder, marker + self.img_suffix)):
                     exists = True
                     break
             if not exists:
