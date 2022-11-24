@@ -5,14 +5,17 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 def naming_convention(fname):
     return os.path.join(
-        "C:/Users/lorenz/Desktop/angelo_lab/data/TONIC/raw/segmentation_data/deepcell_output", fname + "_feature_0.tif"
+        "C:/Users/lorenz/Desktop/angelo_lab/data/TONIC/raw/segmentation_data/deepcell_output",
+        fname + "_feature_0.tif"
     )
 
 
 data_prep = SegmentationTFRecords(
-    data_dir=os.path.normpath("C:/Users/lorenz/Desktop/angelo_lab/data/TONIC/raw/image_data/samples"),
+    data_dir=os.path.normpath(
+        "C:/Users/lorenz/Desktop/angelo_lab/data/TONIC/raw/image_data/samples"),
     cell_table_path=os.path.normpath(
-        "C:/Users/lorenz/Desktop/angelo_lab/data/TONIC/raw/combined_cell_table_normalized_cell_labels_updated.csv"
+        "C:/Users/lorenz/Desktop/angelo_lab/data/TONIC/raw/"
+        "combined_cell_table_normalized_cell_labels_updated.csv"
     ),
     conversion_matrix_path=os.path.normpath(
         "C:/Users/lorenz/Desktop/angelo_lab/data/TONIC/raw/TONIC_conversion_matrix.csv"
@@ -32,7 +35,6 @@ data_prep = SegmentationTFRecords(
     segmentation_naming_convention=naming_convention,
     segment_label_key="label",
     exclude_background_tiles=True,
-    resize=0.5,
 )
 
 data_prep.make_tf_record()
