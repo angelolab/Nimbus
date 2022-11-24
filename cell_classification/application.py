@@ -14,14 +14,15 @@ def cell_preprocess(image, **kwargs):
         raise ValueError("Image data must be 4D, got image of shape {}".format(image.shape))
 
     normalize = kwargs.get('normalize', True)
-    marker = kwargs.get('marker')
-    normalization_dict = kwargs.get('normalization_dict')
     if normalize:
+        marker = kwargs.get('marker', None)
+        normalization_dict = kwargs.get('normalization_dict', {})
         if marker in normalization_dict.keys():
             norm_factor = normalization_dict[marker]
         else:
             print("Norm_factor not found for marker {}".format(marker))
             norm_factor = np.quantile(output[..., 0], 0.999)
+        # normalize only marker channel in chan 0 not binary mask in chan 1
         output[..., 0] /= norm_factor
         output = output.clip(0, 1)
     return output

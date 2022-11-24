@@ -1,4 +1,4 @@
-from application import CellClassification
+from application import CellClassification, cell_preprocess
 from model_builder import ModelBuilder
 from segmentation_data_prep_test import prep_object_and_inputs
 import numpy as np
@@ -33,3 +33,36 @@ def predict_test():
         assert prediction.shape == (1, 1024, 1024, 1)
         assert prediction.max() <= 1.0
         assert prediction.min() >= 0.0
+
+
+def test_cell_preprocess():
+    input_data = np.random.rand(1, 1024, 1024, 2)
+    expected_output = np.copy(input_data)
+    expected_output[..., 0] = input_data[..., 0] / 1.2
+
+    output = cell_preprocess(
+        input_data, normalize=True, marker="test", normalization_dict={"test": 1.2}
+    )
+    # check if shape and values are in the expected range
+    assert output.shape == (1, 1024, 1024, 2)
+    assert output.max() <= 1.0
+    assert output.min() >= 0.0
+    # check if normalization was applied
+    assert np.allclose(expected_output, output, atol=1e-5)
+
+    # check if normalization works when not dict is given
+    output = cell_preprocess(input_data, normalize=True, marker="test")
+    expected_output[..., 0] = input_data[..., 0] / np.quantile(input_data[..., 0], 0.999)
+    expected_output = expected_output.clip(0, 1)
+
+    assert np.allclose(expected_output, output, atol=1e-5)
+
+    # check if normalization works when marker is not in dict
+    output = cell_preprocess(
+        input_data, normalize=True, marker="test2", normalization_dict={"test": 1.2}
+    )
+    assert np.allclose(expected_output, output, atol=1e-5)
+
+    # check if normalization works when normalization is set to False
+    output = cell_preprocess(input_data, normalize=False)
+    assert np.array_equal(input_data, output)
