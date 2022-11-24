@@ -22,9 +22,9 @@ data_prep = SegmentationTFRecords(
     tile_size=[512, 512],
     stride=[512, 512],
     tf_record_path=os.path.normpath("C:/Users/lorenz/Desktop/angelo_lab/data/decidua"),
-    # normalization_dict_path=os.path.normpath(
-    #    "C:/Users/lorenz/Desktop/angelo_lab/data/decidua/normalization_dict.json"
-    # ),
+    normalization_dict_path=os.path.normpath(
+       "C:/Users/lorenz/Desktop/angelo_lab/data/decidua/normalization_dict.json"
+    ),
     selected_markers= [
         "CD45", "CD14", "HLADR", "CD11c", "DCSIGN", "CD68", "CD206", "CD163" ,"CD3", "Ki67", "IDO", 
         "CD8", "CD4", "CD16", "CD56", "CD57", "SMA", "VIM", "CD31", "CK7", "HLAG", "FoxP3", "PDL1",
