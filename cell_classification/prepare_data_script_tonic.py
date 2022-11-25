@@ -12,9 +12,10 @@ def naming_convention(fname):
 
 data_prep = SegmentationTFRecords(
     data_dir=os.path.normpath(
-        "C:/Users/lorenz/Desktop/angelo_lab/data/TONIC/raw/image_data/samples"),
+        "C:/Users/lorenz/Desktop/angelo_lab/data/TONIC/raw/image_data/samples"
+    ),
     cell_table_path=os.path.normpath(
-        "C:/Users/lorenz/Desktop/angelo_lab/data/TONIC/raw/"
+        "C:/Users/lorenz/Desktop/angelo_lab/data/TONIC/raw/" +
         "combined_cell_table_normalized_cell_labels_updated.csv"
     ),
     conversion_matrix_path=os.path.normpath(
@@ -22,11 +23,11 @@ data_prep = SegmentationTFRecords(
     ),
     imaging_platform="MIBI",
     dataset="TONIC",
-    tile_size=[512, 512],
-    stride=[512, 512],
-    tf_record_path=os.path.normpath("C:/Users/lorenz/Desktop/angelo_lab/TONIC"),
+    tile_size=[256, 256],
+    stride=[240, 240],
+    tf_record_path=os.path.normpath("C:/Users/lorenz/Desktop/angelo_lab/data/TONIC"),
     normalization_dict_path=os.path.normpath(
-       "C:/Users/lorenz/Desktop/angelo_lab/data/TONIC/normalization_dict.json"
+      "C:/Users/lorenz/Desktop/angelo_lab/TONIC/normalization_dict.json"
     ),
     normalization_quantile=0.999,
     cell_type_key="cell_meta_cluster",

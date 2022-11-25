@@ -7,6 +7,8 @@ import os
 import toml
 from model_builder import ModelBuilder
 import h5py
+import pandas as pd
+import json
 
 tf.config.run_functions_eagerly(True)
 
@@ -47,6 +49,9 @@ def test_prep_data():
 
         # check if correct number of samples per batch is returned
         trainer.validation_dataset = trainer.validation_dataset.map(
+            trainer.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
+        )
+        trainer.train_dataset = trainer.train_dataset.map(
             trainer.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
         )
         assert next(iter(trainer.train_dataset))[0].shape[0] == params["batch_size"]
@@ -109,6 +114,9 @@ def test_train_step():
         trainer = ModelBuilder(params)
         trainer.prep_data()
         trainer.prep_model()
+        trainer.train_dataset = trainer.train_dataset.map(
+            trainer.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
+        )
         x, y = next(iter(trainer.train_dataset))
 
         # check if train_step returns correct loss
@@ -291,3 +299,48 @@ def test_add_weight_decay():
         loss_without_weight_decay = trainer_no_decay.validate(trainer.validation_dataset)
 
         assert loss_with_weight_decay > loss_without_weight_decay
+
+
+def test_quantile_filter():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
+        data_prep.tf_record_path = temp_dir
+        data_prep.make_tf_record()
+        tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
+        params = toml.load("cell_classification/configs/params.toml")
+        params["record_path"] = tf_record_path
+        params["path"] = temp_dir
+        params["experiment"] = "test"
+        params["num_steps"] = 20
+        params["num_validation"] = 0
+        params["batch_size"] = 1
+        trainer = ModelBuilder(params)
+        trainer.prep_data()
+        unfiltered_num_cells = []
+        for example in trainer.train_dataset:
+            df = pd.read_json(example["activity_df"].numpy()[0].decode())
+            unfiltered_num_cells.append(np.sum(df.activity))
+        params["filter_quantile"] = 0.8
+        trainer = ModelBuilder(params)
+        trainer.prep_data()
+        filtered_num_cells = []
+        for example in trainer.train_dataset:
+            df = pd.read_json(example["activity_df"].numpy()[0].decode())
+            filtered_num_cells.append(np.sum(df.activity))
+
+        # check if we really reduced the number of examples
+        assert len(unfiltered_num_cells) > len(filtered_num_cells)
+
+        # check if filtered examples contain more cells than unfiltered examples
+        diff = [
+            num_cells for num_cells in unfiltered_num_cells if num_cells not in filtered_num_cells
+        ]
+        assert np.max(diff) < np.min(filtered_num_cells)
+
+        # check if dataset_num_pos_dict.json was saved and contains the right values
+        assert os.path.exists(trainer.num_pos_dict_path)
+
+        with open(trainer.num_pos_dict_path, "r") as f:
+            num_pos_dict = json.load(f)
+
+        assert np.array_equal(sorted(num_pos_dict["CD4"]), sorted(unfiltered_num_cells))
