@@ -9,6 +9,7 @@ import json
 from utils import verify_in_list, list_folders, validate_paths
 import copy
 import multiprocessing as mp
+import cv2
 
 
 class SegmentationTFRecords:
@@ -19,7 +20,8 @@ class SegmentationTFRecords:
         tile_size, stride, tf_record_path, selected_markers=None, normalization_dict_path=None,
         normalization_quantile=0.999, cell_type_key="cluster_labels", sample_key="SampleID",
         segmentation_fname="cell_segmentation", segment_label_key="labels",
-        segmentation_naming_convention=None, exclude_background_tiles=False
+        segmentation_naming_convention=None, exclude_background_tiles=False, resize=None,
+        img_suffix=".tiff"
     ):
         """Initializes SegmentationTFRecords and loads everything except the images
 
@@ -61,6 +63,10 @@ class SegmentationTFRecords:
                 the sample folder and is named $segmentation_fname.tiff
             exclude_background_tiles (bool):
                 Whether to exclude the all tiles that only contain background
+            resize (float):
+                The resize factor to use for the images
+            img_suffix (str):
+                The suffix of the image files
         """
         self.selected_markers = selected_markers
         self.data_dir = data_dir
@@ -79,6 +85,8 @@ class SegmentationTFRecords:
         self.stride = stride
         self.segmentation_naming_convention = segmentation_naming_convention
         self.exclude_background_tiles = exclude_background_tiles
+        self.resize = resize
+        self.img_suffix = img_suffix
 
     def get_image(self, data_folder, marker):
         """Loads the images from a single data_folder
@@ -93,7 +101,7 @@ class SegmentationTFRecords:
             np.array:
                 The multiplexed image
         """
-        img = imread(os.path.join(data_folder, marker + ".tiff"))
+        img = imread(os.path.join(data_folder, marker + self.img_suffix))
         img = np.squeeze(img)
         if img.ndim == 2:
             img = np.expand_dims(img, axis=-1)
@@ -114,7 +122,9 @@ class SegmentationTFRecords:
                 The instance mask
         """
         if self.segmentation_naming_convention is None:
-            instance_mask = imread(os.path.join(data_folder, self.segmentation_fname + ".tiff"))
+            instance_mask = imread(
+                os.path.join(data_folder, self.segmentation_fname + self.img_suffix)
+            )
         else:
             sample_name = os.path.basename(data_folder)
             instance_mask = imread(self.segmentation_naming_convention(sample_name))
@@ -123,6 +133,14 @@ class SegmentationTFRecords:
             instance_mask = np.expand_dims(instance_mask, axis=-1)
         edge = find_boundaries(instance_mask, mode="inner").astype(np.uint8)
         interior = np.logical_and(edge == 0, instance_mask > 0).astype(np.uint8)
+        if self.resize:
+            instance_mask = cv2.resize(
+                instance_mask, None, fx=self.resize, fy=self.resize,
+                interpolation=cv2.INTER_NEAREST
+            )
+            interior = cv2.resize(
+                interior, None, fx=self.resize, fy=self.resize, interpolation=cv2.INTER_NEAREST
+            )
         return interior, instance_mask
 
     def get_marker_activity(self, sample_name, conversion_matrix, marker):
@@ -198,6 +216,10 @@ class SegmentationTFRecords:
         marker_activity_mask = self.get_marker_activity_mask(
             self.instance_mask, self.binary_mask, marker_activity
         )
+        if self.resize is not None:
+            mplex_img = cv2.resize(
+                mplex_img, None, fx=self.resize, fy=self.resize, interpolation=cv2.INTER_AREA
+            )
         return {
             "mplex_img": mplex_img.astype(np.float32),
             "binary_mask": self.binary_mask.astype(np.uint8),
@@ -306,7 +328,7 @@ class SegmentationTFRecords:
         for marker in self.selected_markers:
             exists = False
             for folder in self.data_folders:
-                if os.path.exists(os.path.join(folder, marker + ".tiff")):
+                if os.path.exists(os.path.join(folder, marker + self.img_suffix)):
                     exists = True
                     break
             if not exists:
