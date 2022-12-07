@@ -77,8 +77,8 @@ def calc_scores(gt, pred, threshold):
             dictionary containing scores
     """
     # exclude masked out regions from metric calculation
-    gt = gt[gt < 2]
     pred = pred[gt < 2]
+    gt = gt[gt < 2]
     tn, fp, fn, tp = confusion_matrix(
         y_true=gt, y_pred=(pred >= threshold).astype(int), labels=[0, 1]
     ).ravel()

@@ -32,44 +32,80 @@ def test_prep_loss():
 
 def test_prep_data():
     with tempfile.TemporaryDirectory() as temp_dir:
-        # trainer, params = prep_trainer(temp_dir)
-        data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
-        data_prep.tf_record_path = temp_dir
-        data_prep.make_tf_record()
-        tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
+        print(os.path.exists(temp_dir))
+        tf_record_paths = []
+        for i in range(2):
+            data_prep, _, _, _ = prep_object_and_inputs(
+                temp_dir, dataset="testdata_{}".format(i), num_folders=10,
+                scale=[0.5, 1.0, 1.5, 2.0, 5.0]*2
+            )
+            data_prep.tf_record_path = temp_dir
+            data_prep.make_tf_record()
+            tf_record_path = os.path.join(
+                data_prep.tf_record_path, "testdata_{}.tfrecord".format(i)
+            )
+            tf_record_paths.append(tf_record_path)
         params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = tf_record_path
+        params["record_path"] = tf_record_paths
+        params["dataset_names"] = ["test1", "test2"]
+        params["dataset_sample_probs"] = [0.5, 0.5]
         params["path"] = temp_dir
         params["experiment"] = "test"
         params["num_steps"] = 20
-        params["num_validation"] = 2
+        params["num_validation"] = [2, 2]
         params["batch_size"] = 2
         trainer = ModelBuilder(params)
         trainer.prep_data()
 
+        # check if correct number of datasets are loaded
+        assert len(trainer.validation_datasets) == 2
+        assert len(trainer.train_datasets) == 2
+
+        # check if train_dataset batches consist of samples from both datasets
+        batch_list = []
+        for batch in trainer.train_dataset:
+            batch_dset = [b.decode() for b in batch['dataset'].numpy()]
+            batch_list += batch_dset
+        assert set(batch_list) == set(["testdata_0", "testdata_1"])
+
         # check if correct number of samples per batch is returned
-        trainer.validation_dataset = trainer.validation_dataset.map(
+        trainer.validation_datasets = [validation_dataset.map(
             trainer.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
-        )
+        ) for validation_dataset in trainer.validation_datasets]
         trainer.train_dataset = trainer.train_dataset.map(
             trainer.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
         )
         assert next(iter(trainer.train_dataset))[0].shape[0] == params["batch_size"]
-        assert next(iter(trainer.validation_dataset))[0].shape[0] == params["batch_size"]
+        for validation_dataset in trainer.validation_datasets:
+            assert next(iter(validation_dataset))[0].shape[0] == params["batch_size"]
 
         # check if samples only contains two files (inputs, targets)
         assert len(next(iter(trainer.train_dataset))) == 2
-        assert len(next(iter(trainer.validation_dataset))) == 2
+        for validation_dataset in trainer.validation_datasets:
+            assert len(next(iter(validation_dataset))) == 2
 
         # check if in eval mode validation samples contain all original example keys
         trainer.params["eval"] = True
         trainer.prep_data()
-        val_dset = iter(trainer.validation_dataset)
+        val_dset = iter(trainer.validation_datasets[0])
         val_batch = next(val_dset)
         assert set(val_batch.keys()) == set([
                 "mplex_img", "binary_mask", "instance_mask", "folder_name", "marker", "dataset",
                 "imaging_platform", "marker_activity_mask", "activity_df"]
         )
+        # check if in eval mode validation samples from one validation dataset only contain samples
+        # from one dataset 
+        batch_list = []
+        for batch in trainer.validation_datasets[0]:
+            batch_dset = [b.decode() for b in batch['dataset'].numpy()]
+            batch_list += batch_dset
+        assert set(batch_list) == set(["testdata_0"])
+
+        batch_list = []
+        for batch in trainer.validation_datasets[1]:
+            batch_dset = [b.decode() for b in batch['dataset'].numpy()]
+            batch_list += batch_dset
+        assert set(batch_list) == set(["testdata_1"])
 
 
 def test_prep_model():

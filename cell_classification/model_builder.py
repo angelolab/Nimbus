@@ -35,30 +35,49 @@ class ModelBuilder:
     def prep_data(self):
         """Prepares training and validation data"""
         # make datasets and splits
-        dataset = tf.data.TFRecordDataset(self.params["record_path"])
-        dataset = dataset.map(
-            lambda x: tf.io.parse_single_example(x, feature_description),
+        datasets = [
+            tf.data.TFRecordDataset(record_path) for record_path in  self.params["record_path"]
+        ]
+        datasets = [
+            dataset.map(lambda x: tf.io.parse_single_example(x, feature_description),
             num_parallel_calls=tf.data.AUTOTUNE,
-        )
-        dataset = dataset.map(parse_dict, num_parallel_calls=tf.data.AUTOTUNE)
+        ) for dataset in datasets
+        ]
+        datasets = [
+            dataset.map(parse_dict, num_parallel_calls=tf.data.AUTOTUNE) for dataset in datasets
+        ]
 
         # filter out sparse samples
         if "filter_quantile" in self.params.keys():
-            dataset = self.quantile_filter(dataset)
+            datasets = [self.quantile_filter(dataset) for dataset in datasets]
 
         # split into train and validation
-        self.validation_dataset = dataset.take(self.params["num_validation"])
-        self.train_dataset = dataset.skip(self.params["num_validation"])
-        if "num_training" in self.params.keys():
-            self.train_dataset = self.train_dataset.take(self.params["num_training"])
+        self.validation_datasets = [
+            dataset.take(num_validation) for dataset, num_validation in zip(
+                datasets, self.params["num_validation"])
+            ]
+        self.train_datasets= [dataset.skip(num_validation) for dataset, num_validation in zip(
+            datasets, self.params["num_validation"])
+        ]
+        if "num_training" in self.params.keys() and self.params["num_training"] is not None:
+            self.train_datasets = [train_dataset.take(num_training) for train_dataset, num_training
+                in zip(self.train_datasets, self.params["num_training"])
+            ]
+        
+        # merge datasets with tf.data.Dataset.sample_from_datasets
+        self.train_dataset = tf.data.Dataset.sample_from_datasets(
+            datasets=self.train_datasets, weights=self.params["dataset_sample_probs"]
+        )
 
         # shuffle, batch and augment the training data
         self.train_dataset = self.train_dataset.shuffle(self.params["shuffle_buffer_size"]).batch(
             self.params["batch_size"] * np.max([self.num_gpus, 1])
         )
-        self.validation_dataset = self.validation_dataset.batch(
+        self.validation_datasets = [validation_dataset.batch(
             self.params["batch_size"] * np.max([self.num_gpus, 1])
-        )
+        ) for validation_dataset in self.validation_datasets]
+
+        self.dataset_names = self.params["dataset_names"]
 
     def prep_model(self):
         """Prepares the model for training"""
@@ -162,7 +181,8 @@ class ModelBuilder:
 
         self.summary_writer = tf.summary.create_file_writer(self.params["log_dir"])
         self.step = 0
-        self.val_loss_history = []
+        self.global_val_loss = []
+        self.val_loss_history = {}
         self.train_loss_tmp = []
         while self.step < self.params["num_steps"]:
             for x, y in tqdm(self.train_dataset):
@@ -214,15 +234,23 @@ class ModelBuilder:
         # run validation and write to tensorboard
         if self.step % self.params["val_steps"] == 0:
             print("Running validation...")
-            validation_dataset = self.validation_dataset.map(
-                self.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
-            )
-            val_loss = self.model.evaluate(validation_dataset, verbose=1)
-            print("Validation loss:", val_loss)
-            self.val_loss_history.append(val_loss)
+            for validation_dataset, dataset_name in zip(self.validation_datasets,
+                self.dataset_names):
+                validation_dataset = validation_dataset.map(
+                    self.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
+                )
+                val_loss = self.model.evaluate(validation_dataset, verbose=1)
+                print("Validation loss:", val_loss)
+                if dataset_name not in self.val_loss_history:
+                    self.val_loss_history[dataset_name] = []
+                self.val_loss_history[dataset_name].append(val_loss)
+                with self.summary_writer.as_default():
+                    tf.summary.scalar(dataset_name + "_val", val_loss, step=self.step)
+            val_loss = np.mean([val_loss[-1] for val_loss in self.val_loss_history.values()])
+            self.global_val_loss.append(val_loss)
             with self.summary_writer.as_default():
-                tf.summary.scalar("val_loss", val_loss, step=self.step)
-            if val_loss <= tf.reduce_min(self.val_loss_history):
+                tf.summary.scalar("global_val", val_loss, step=self.step)
+            if val_loss <= tf.reduce_min(self.global_val_loss):
                 print("Saving model to", self.params["model_path"])
                 self.model.save_weights(self.params["model_path"])
 

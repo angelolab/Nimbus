@@ -13,12 +13,13 @@ import tensorflow as tf
 def prep_object(
     data_dir="path", cell_table_path="path", conversion_matrix_path="path",
     normalization_dict_path="path", tf_record_path="path", tile_size=[256, 256], stride=[256, 256],
-    normalization_quantile=0.999, selected_markers=None, segmentation_naming_convention=None
+    normalization_quantile=0.999, selected_markers=None, segmentation_naming_convention=None,
+    imaging_platform="imaging_platform", dataset="dataset"
 ):
     data_prep = SegmentationTFRecords(
         data_dir=data_dir, cell_table_path=cell_table_path,
-        conversion_matrix_path=conversion_matrix_path, imaging_platform="imaging_platform",
-        dataset="dataset", tile_size=tile_size, stride=stride, tf_record_path=tf_record_path,
+        conversion_matrix_path=conversion_matrix_path, imaging_platform=imaging_platform,
+        dataset=dataset, tile_size=tile_size, stride=stride, tf_record_path=tf_record_path,
         normalization_dict_path=normalization_dict_path, selected_markers=selected_markers,
         normalization_quantile=normalization_quantile,
         segmentation_naming_convention=segmentation_naming_convention
@@ -26,7 +27,10 @@ def prep_object(
     return data_prep
 
 
-def prep_object_and_inputs(temp_dir):
+def prep_object_and_inputs(
+    temp_dir, imaging_platform="imaging_platform", dataset="dataset", selected_markers=["CD4"],
+    num_folders=5, scale=[0.5, 1.0, 1.5, 2.0, 5.0],
+    ):
     # create temporary folders with data for the tests
     conversion_matrix = prepare_conversion_matrix()
     conversion_matrix_path = os.path.join(temp_dir, "conversion_matrix.csv")
@@ -35,7 +39,8 @@ def prep_object_and_inputs(temp_dir):
     with open(os.path.join(temp_dir, "norm_dict.json"), "w") as f:
         json.dump(norm_dict, f)
     data_folders = prepare_test_data_folders(
-        5, temp_dir, list(norm_dict.keys()) + ["XYZ"], random=True, scale=[0.5, 1.0, 1.5, 2.0, 5.0]
+        num_folders, temp_dir, list(norm_dict.keys()) + ["XYZ"], random=True,
+        scale=scale
     )
     cell_table_path = os.path.join(temp_dir, "cell_type_table.csv")
     cell_table = prepare_cell_type_table()
@@ -46,7 +51,9 @@ def prep_object_and_inputs(temp_dir):
         tf_record_path=temp_dir,
         cell_table_path=cell_table_path,
         normalization_dict_path=None,
-        selected_markers=["CD4"],
+        selected_markers=selected_markers,
+        imaging_platform=imaging_platform,
+        dataset=dataset
     )
     data_prep.load_and_check_input()
     return data_prep, data_folders, conversion_matrix, cell_table
@@ -85,7 +92,7 @@ def prepare_test_data_folders(num_folders, temp_dir, selected_markers, random=Fa
         scale = [1.0] * num_folders
     for i in range(num_folders):
         folder = os.path.join(temp_dir, "fov_" + str(i))
-        os.mkdir(folder)
+        os.makedirs(folder, exist_ok=True)
         data_folders.append(folder)
         for marker, std in zip(selected_markers, scale):
             if random:
