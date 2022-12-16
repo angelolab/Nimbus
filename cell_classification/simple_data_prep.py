@@ -53,7 +53,15 @@ class SimpleTFRecords(SegmentationTFRecords):
             gt_suffix (str):
                 The suffix of the ground truth column in the cell_table
         """
-        super().__init__()
+        super().__init__(
+            data_dir=data_dir, cell_table_path=cell_table_path, imaging_platform=imaging_platform,
+            dataset=dataset, tile_size=tile_size, stride=stride, tf_record_path=tf_record_path,
+            selected_markers=selected_markers, normalization_dict_path=normalization_dict_path,
+            normalization_quantile=normalization_quantile, segmentation_fname=segmentation_fname,
+            segmentation_naming_convention=segmentation_naming_convention, resize=resize,
+            exclude_background_tiles=exclude_background_tiles, img_suffix=img_suffix,
+            sample_key=sample_key, segment_label_key=segment_label_key, conversion_matrix_path=None
+        )
         self.selected_markers = selected_markers
         self.data_dir = data_dir
         self.normalization_dict_path = normalization_dict_path
@@ -87,16 +95,14 @@ class SimpleTFRecords(SegmentationTFRecords):
                 The marker activity for the given labels, 1 if the marker is active, 0
                 otherwise and -1 if the marker is not specific enough to be considered active
         """
-        cell_types = self.sample_subset[self.cell_type_key].str.lower().values
 
         df = pd.DataFrame(
             {
                 "labels": self.sample_subset[self.segment_label_key],
-                "activity": self.sample_subset[self.gt_key],
-                "cell_type": cell_types,
+                "activity": self.sample_subset[marker + self.gt_suffix],
             }
         )
-        return df, cell_types
+        return df, None
 
     def check_additional_inputs(self):
         """Checks additional inputs for correctness"""

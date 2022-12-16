@@ -296,7 +296,7 @@ class SegmentationTFRecords:
 
     def load_and_check_input(self):
         """Checks the input for correctness"""
-
+        self.cell_type_table = pd.read_csv(self.cell_table_path)
         self.check_additional_inputs()
         # make tfrecord path
         os.makedirs(self.tf_record_path, exist_ok=True)
@@ -344,16 +344,6 @@ class SegmentationTFRecords:
             raise ValueError("The normalization_quantile is not in [0, 1]")
 
         # CELL TYPE TABLE
-        # load cell_types.csv
-        self.cell_type_table = pd.read_csv(self.cell_table_path)
-        self.cell_type_table.drop(self.cell_type_table.columns.difference([
-            self.cell_type_key, self.segment_label_key, self.sample_key,
-        ]), 1, inplace=True)
-
-        # check if cell_type_key is in cell_type_table
-        if self.cell_type_key not in self.cell_type_table.columns:
-            raise ValueError("The cell_type_key is not in the cell_type_table")
-
         # check if segment_label_key is in cell_type_table
         if self.segment_label_key not in self.cell_type_table.columns:
             raise ValueError("The segment_label_key is not in the cell_type_table")
@@ -379,6 +369,16 @@ class SegmentationTFRecords:
         # check if markers were selected or take all markers from conversion matrix
         if self.selected_markers is None:
             self.selected_markers = list(self.conversion_matrix.columns)
+
+        # CELL TYPE TABLE
+        # drop all columns except cell_type_key, segment_label_key, sample_key
+        self.cell_type_table.drop(self.cell_type_table.columns.difference([
+            self.cell_type_key, self.segment_label_key, self.sample_key,
+        ]), 1, inplace=True)
+
+        # check if cell_type_key is in cell_type_table
+        if self.cell_type_key not in self.cell_type_table.columns:
+            raise ValueError("The cell_type_key is not in the cell_type_table")
 
         # check if selected markers are in conversion matrix
         verify_in_list(
