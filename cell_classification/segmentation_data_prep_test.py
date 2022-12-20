@@ -217,7 +217,7 @@ def test_load_and_check_input():
             index=["stromal", "FAP", "NK", "CD4", "CD14", "CD163"],
         )
         conversion_matrix_path = os.path.join(temp_dir, "conversion_matrix.csv")
-        conversion_matrix.to_csv(conversion_matrix_path, index=False)
+        conversion_matrix.to_csv(conversion_matrix_path, index=True)
         data_prep = copy.deepcopy(data_prep_working)
         data_prep.conversion_matrix_path = conversion_matrix_path
         data_prep.normalization_dict_path = os.path.join(temp_dir, "norm_dict.json")
@@ -233,7 +233,7 @@ def test_load_and_check_input():
             index=["stromal", "FAP", "NK", "CD4", "CD14", "CD163"],
         )
         conversion_matrix_path = os.path.join(temp_dir, "conversion_matrix.csv")
-        conversion_matrix.to_csv(conversion_matrix_path, index=False)
+        conversion_matrix.to_csv(conversion_matrix_path, index=True)
         data_prep = copy.deepcopy(data_prep_working)
         data_prep.selected_markers = ["ZYX"]
         data_prep.conversion_matrix_path = conversion_matrix_path
@@ -344,8 +344,9 @@ def test_get_marker_activity():
     fov_1_subset = cell_table[cell_table.SampleID == sample_name]
     data_prep.sample_subset = fov_1_subset
     conversion_matrix.index = conversion_matrix.index.str.lower()
+    data_prep.conversion_matrix = conversion_matrix
     fov_1_subset["cluster_labels"] = fov_1_subset["cluster_labels"].str.lower()
-    marker_activity, _ = data_prep.get_marker_activity(sample_name, conversion_matrix, marker)
+    marker_activity, _ = data_prep.get_marker_activity(sample_name, marker)
     # check if the we get marker_acitivity for all labels in the fov_1 subset
     assert np.array_equal(marker_activity.labels, fov_1_subset.labels)
 

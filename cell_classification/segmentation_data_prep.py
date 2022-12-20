@@ -143,7 +143,7 @@ class SegmentationTFRecords:
             )
         return interior, instance_mask
 
-    def get_marker_activity(self, sample_name, conversion_matrix, marker):
+    def get_marker_activity(self, sample_name, marker):
         """Gets the marker activity for the given labels
         Args:
             sample_name (str):
@@ -162,7 +162,7 @@ class SegmentationTFRecords:
         df = pd.DataFrame(
             {
                 "labels": self.sample_subset[self.segment_label_key],
-                "activity": conversion_matrix.loc[cell_types, marker].values,
+                "activity": self.conversion_matrix.loc[cell_types, marker].values,
                 "cell_type": cell_types,
             }
         )
@@ -212,7 +212,7 @@ class SegmentationTFRecords:
         mplex_img = mplex_img.clip(0, 1)
         fov = os.path.basename(data_folder)
         # get the cell types and marker activity mask
-        marker_activity, cell_types = self.get_marker_activity(fov, self.conversion_matrix, marker)
+        marker_activity, cell_types = self.get_marker_activity(fov, marker)
         marker_activity_mask = self.get_marker_activity_mask(
             self.instance_mask, self.binary_mask, marker_activity
         )
@@ -296,6 +296,8 @@ class SegmentationTFRecords:
 
     def load_and_check_input(self):
         """Checks the input for correctness"""
+        self.cell_type_table = pd.read_csv(self.cell_table_path)
+        self.check_additional_inputs()
         # make tfrecord path
         os.makedirs(self.tf_record_path, exist_ok=True)
 
@@ -305,24 +307,9 @@ class SegmentationTFRecords:
             os.path.join(self.data_dir, folder) for folder in list_folders(self.data_dir)
         ]
 
-        # CONVERSION MATRIX
-        # read the file
-        validate_paths(self.conversion_matrix_path, data_prefix=False)
-        self.conversion_matrix = pd.read_csv(self.conversion_matrix_path, index_col=0)
-
-        # check if markers were selected or take all markers from conversion matrix
-        if self.selected_markers is None:
-            self.selected_markers = list(self.conversion_matrix.columns)
-
         # check if selected markers are a list
         if not isinstance(self.selected_markers, list):
             self.selected_markers = [self.selected_markers]
-
-        # check if selected markers are in conversion matrix
-        verify_in_list(
-            selected_markers=self.selected_markers,
-            conversion_matrix_columns=self.conversion_matrix.columns,
-        )
 
         # check if selected markers are in data folders
         for marker in self.selected_markers:
@@ -357,16 +344,6 @@ class SegmentationTFRecords:
             raise ValueError("The normalization_quantile is not in [0, 1]")
 
         # CELL TYPE TABLE
-        # load cell_types.csv
-        self.cell_type_table = pd.read_csv(self.cell_table_path)
-        self.cell_type_table.drop(self.cell_type_table.columns.difference([
-            self.cell_type_key, self.segment_label_key, self.sample_key,
-        ]), 1, inplace=True)
-
-        # check if cell_type_key is in cell_type_table
-        if self.cell_type_key not in self.cell_type_table.columns:
-            raise ValueError("The cell_type_key is not in the cell_type_table")
-
         # check if segment_label_key is in cell_type_table
         if self.segment_label_key not in self.cell_type_table.columns:
             raise ValueError("The segment_label_key is not in the cell_type_table")
@@ -380,6 +357,33 @@ class SegmentationTFRecords:
             sample_names=self.cell_type_table[self.sample_key].values,
             data_folders=list_folders(self.data_dir),
             warn=True
+        )
+
+    def check_additional_inputs(self):
+        """Checks the additional inputs for correctness"""
+        # CONVERSION MATRIX
+        # read the file
+        validate_paths(self.conversion_matrix_path, data_prefix=False)
+        self.conversion_matrix = pd.read_csv(self.conversion_matrix_path, index_col=0)
+
+        # check if markers were selected or take all markers from conversion matrix
+        if self.selected_markers is None:
+            self.selected_markers = list(self.conversion_matrix.columns)
+
+        # CELL TYPE TABLE
+        # drop all columns except cell_type_key, segment_label_key, sample_key
+        self.cell_type_table.drop(self.cell_type_table.columns.difference([
+            self.cell_type_key, self.segment_label_key, self.sample_key,
+        ]), 1, inplace=True)
+
+        # check if cell_type_key is in cell_type_table
+        if self.cell_type_key not in self.cell_type_table.columns:
+            raise ValueError("The cell_type_key is not in the cell_type_table")
+
+        # check if selected markers are in conversion matrix
+        verify_in_list(
+            selected_markers=self.selected_markers,
+            conversion_matrix_columns=self.conversion_matrix.columns,
         )
 
         # make cell_types lowercase to make matching easier
