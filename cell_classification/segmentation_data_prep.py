@@ -17,11 +17,11 @@ class SegmentationTFRecords:
 
     def __init__(
         self, data_dir, cell_table_path, conversion_matrix_path, imaging_platform, dataset,
-        tile_size, stride, tf_record_path, selected_markers=None, normalization_dict_path=None,
-        normalization_quantile=0.999, cell_type_key="cluster_labels", sample_key="SampleID",
-        segmentation_fname="cell_segmentation", segment_label_key="labels",
-        segmentation_naming_convention=None, exclude_background_tiles=False, resize=None,
-        img_suffix=".tiff"
+        tile_size, stride, tf_record_path, nuclei_channels=[], membrane_channels=[],
+        selected_markers=None, normalization_dict_path=None, normalization_quantile=0.999,
+        cell_type_key="cluster_labels", sample_key="SampleID", segment_label_key="labels",
+        segmentation_fname="cell_segmentation", segmentation_naming_convention=None,
+        exclude_background_tiles=False, resize=None, img_suffix=".tiff",
     ):
         """Initializes SegmentationTFRecords and loads everything except the images
 
@@ -42,6 +42,10 @@ class SegmentationTFRecords:
                 The stride to tile the data
             tf_record_path (str):
                 The path to the tf record to make
+            nuclei_channels (list):
+                The channels that contain nuclei markers to make composite nuclei images
+            membrane_channels (list):
+                The channels that contain membrane markers to make composite membrane images
             selected_markers (list):
                 The markers of interest for generating the tf record. If None, all markers
                 mentioned in the conversion_matrix are used
@@ -87,6 +91,8 @@ class SegmentationTFRecords:
         self.exclude_background_tiles = exclude_background_tiles
         self.resize = resize
         self.img_suffix = img_suffix
+        self.nuclei_channels = nuclei_channels
+        self.membrane_channels = membrane_channels
 
     def get_image(self, data_folder, marker):
         """Loads the images from a single data_folder
@@ -142,6 +148,34 @@ class SegmentationTFRecords:
                 interior, None, fx=self.resize, fy=self.resize, interpolation=cv2.INTER_NEAREST
             )
         return interior, instance_mask
+
+    def get_composite_image(self, data_folder, channels):
+        """Makes a composite image by averaging the given channels
+
+        Args:
+            data_folder (str):
+                The path to the data_folder
+            channels (list):
+                The channels to make the composite image from
+        Returns:
+            np.array:
+                The composite image
+        """
+        composite = []
+        if channels:
+            for channel in channels:
+                img = self.get_image(data_folder, channel)
+                img /= self.normalization_dict[channel]
+                img = img.clip(0, 1)
+                composite.append(img)
+            composite_img = np.mean(np.stack(composite, axis=-1), axis=-1)
+        else:
+            composite_img = np.zeros_like(self.binary_mask).astype(np.float32)
+        if self.resize:
+            composite_img = cv2.resize(
+                composite_img, None, fx=self.resize, fy=self.resize, interpolation=cv2.INTER_AREA
+            )
+        return composite_img
 
     def get_marker_activity(self, sample_name, marker):
         """Gets the marker activity for the given labels
@@ -222,6 +256,8 @@ class SegmentationTFRecords:
             )
         return {
             "mplex_img": mplex_img.astype(np.float32),
+            "nuclei_img": self.nuclei_img.astype(np.float32),
+            "membrane_img": self.membrane_img.astype(np.float32),
             "binary_mask": self.binary_mask.astype(np.uint8),
             "instance_mask": self.instance_mask.astype(np.uint16),
             "imaging_platform": self.imaging_platform,
@@ -234,7 +270,8 @@ class SegmentationTFRecords:
 
     def tile_example(
         self, example, spatial_keys=[
-            "mplex_img", "binary_mask", "instance_mask", "marker_activity_mask",
+            "mplex_img", "nuclei_img", "membrane_img", "binary_mask", "instance_mask",
+            "marker_activity_mask",
         ],
     ):
         """Tiles the example into a grid of tiles
@@ -337,7 +374,7 @@ class SegmentationTFRecords:
             # or segmentation_fname not in data_folders
             self.normalization_dict = self.calculate_normalization_matrix(
                 self.data_folders,
-                self.selected_markers,
+                self.selected_markers + self.nuclei_channels + self.membrane_channels,
             )
         # check if normalization_quantile is in [0, 1]
         if self.normalization_quantile < 0 or self.normalization_quantile > 1:
@@ -414,6 +451,8 @@ class SegmentationTFRecords:
                 self.cell_type_table[self.sample_key] == os.path.basename(data_folder)
             ]
             self.binary_mask, self.instance_mask = self.get_inst_binary_masks(data_folder)
+            self.nuclei_img = self.get_composite_image(data_folder, self.nuclei_channels)
+            self.membrane_img = self.get_composite_image(data_folder, self.membrane_channels)
             for marker in tqdm(self.selected_markers):
                 example = self.prepare_example(data_folder, marker)
                 if self.tile_size:
@@ -488,6 +527,7 @@ class SegmentationTFRecords:
                 The normalization dict
         """
         # iterate through the data_folders and calculate the quantiles
+        selected_markers = list(set(selected_markers))  # remove duplicates
         quantiles = {}
         print("Calculating normalization quantiles...")
         for data_folder in tqdm(data_folders):
@@ -517,6 +557,8 @@ class SegmentationTFRecords:
 
 feature_description = {
     "mplex_img": tf.io.RaggedFeature(tf.string),
+    "nuclei_img": tf.io.RaggedFeature(tf.string),
+    "membrane_img": tf.io.RaggedFeature(tf.string),
     "binary_mask": tf.io.RaggedFeature(tf.string),
     "instance_mask": tf.io.RaggedFeature(tf.string),
     "imaging_platform": tf.io.RaggedFeature(tf.int64),
@@ -545,11 +587,12 @@ def parse_dict(deserialized_dict):
             example[key] = example[key].numpy().decode()
     for key in ["binary_mask", "marker_activity_mask"]:
         example[key] = tf.io.decode_png(deserialized_dict[key][0], dtype=tf.uint8)
-    for key in ["mplex_img", "instance_mask"]:
+    for key in ["mplex_img", "nuclei_img", "membrane_img", "instance_mask"]:
         example[key] = tf.io.decode_png(deserialized_dict[key][0], dtype=tf.uint16)
-    example["mplex_img"] = tf.cast(example["mplex_img"], tf.float32) / tf.constant(
-        (np.iinfo(np.uint16).max), dtype=tf.float32
-    )
+    for key in ["mplex_img", "nuclei_img", "membrane_img"]:
+        example[key] = tf.cast(example[key], tf.float32) / tf.constant(
+            (np.iinfo(np.uint16).max), dtype=tf.float32
+        )
     if type(example["activity_df"]) == str:
         example["activity_df"] = pd.read_json(example["activity_df"])
     return example

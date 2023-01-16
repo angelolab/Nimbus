@@ -1,5 +1,4 @@
-import h5py
-from model_builder_test import prep_object_and_inputs
+from segmentation_data_prep_test import prep_object_and_inputs
 from model_builder import ModelBuilder
 import tempfile
 import toml
@@ -113,4 +112,8 @@ def test_HDF5Generator():
         # check if generator returns the right items
         for sample in generator:
             assert isinstance(sample, dict)
-            assert len(list(sample.keys())) == 11
+            assert set(list(sample.keys())) == set([
+                'binary_mask', 'dataset', 'folder_name', 'imaging_platform', 'instance_mask',
+                'marker', 'marker_activity_mask', 'membrane_img', 'mplex_img', 'nuclei_img',
+                'prediction', 'prediction_mean', 'activity_df'
+            ])

@@ -6,10 +6,11 @@ class SimpleTFRecords(SegmentationTFRecords):
     """Prepares the data for the segmentation model"""
     def __init__(
         self, data_dir, cell_table_path, imaging_platform, dataset, tile_size, stride,
-        tf_record_path, selected_markers=None, normalization_dict_path=None,
-        normalization_quantile=0.999, segmentation_naming_convention=None,
-        segmentation_fname="cell_segmentation",  exclude_background_tiles=False, resize=None,
-        img_suffix=".tiff", sample_key="SampleID", segment_label_key="labels", gt_suffix="_gt",
+        tf_record_path, nuclei_channels, membrane_channels, selected_markers=None,
+        normalization_dict_path=None, normalization_quantile=0.999,
+        segmentation_naming_convention=None, segmentation_fname="cell_segmentation",
+        exclude_background_tiles=False, resize=None, img_suffix=".tiff", sample_key="SampleID",
+        segment_label_key="labels", gt_suffix="_gt",
 
     ):
         """Initializes SegmentationTFRecords and loads everything except the images
@@ -56,6 +57,7 @@ class SimpleTFRecords(SegmentationTFRecords):
         super().__init__(
             data_dir=data_dir, cell_table_path=cell_table_path, imaging_platform=imaging_platform,
             dataset=dataset, tile_size=tile_size, stride=stride, tf_record_path=tf_record_path,
+            nuclei_channels=nuclei_channels, membrane_channels=membrane_channels,
             selected_markers=selected_markers, normalization_dict_path=normalization_dict_path,
             normalization_quantile=normalization_quantile, segmentation_fname=segmentation_fname,
             segmentation_naming_convention=segmentation_naming_convention, resize=resize,
@@ -80,6 +82,8 @@ class SimpleTFRecords(SegmentationTFRecords):
         self.resize = resize
         self.img_suffix = img_suffix
         self.gt_suffix = gt_suffix
+        self.nuclei_channels = nuclei_channels
+        self.membrane_channels = membrane_channels
 
     def get_marker_activity(self, sample_name, marker):
         """Gets the marker activity for the given labels

@@ -142,7 +142,7 @@ def test_calculate_normalization_matrix():
         )
 
         # check if the normalization_dict has the correct values for stochastic images
-        for marker, std in zip(norm_dict.keys(), scale):
+        for marker, std in zip(selected_markers, scale):
             assert np.isclose(norm_dict[marker], std * 0.999, rtol=1e-3)
 
         # check if the normalization_dict is correctly written to the json file
@@ -150,8 +150,7 @@ def test_calculate_normalization_matrix():
         assert norm_dict_loaded == norm_dict
 
         # check if the normalization_dict has the correct keys
-        for marker in selected_markers:
-            assert marker in norm_dict.keys()
+        assert set(selected_markers) == set(norm_dict.keys())
 
 
 def test_load_and_check_input():
@@ -333,6 +332,10 @@ def test_get_inst_binary_masks():
         assert np.array_equal(np.squeeze(loaded_img), instance_mask)
 
 
+def test_get_composite_image():
+    pass
+
+
 def test_get_marker_activity():
 
     data_prep = prep_object()
@@ -412,6 +415,8 @@ def test_tile_example(tile_size):
     example = {
         "mplex_img": np.random.rand(512, 512, 3).astype(np.float32),
         "binary_mask": np.random.randint(0, 2, [512, 512, 1]).astype(np.uint8),
+        "nuclei_img": np.random.rand(512, 512, 1).astype(np.float32),
+        "membrane_img": np.random.rand(512, 512, 1).astype(np.float32),
         "instance_mask": instance_mask,
         "marker_activity_mask": np.random.randint(0, 2, [512, 512, 21]).astype(np.uint8),
         "dataset": "test_dataset",
@@ -477,12 +482,15 @@ def test_prepare_example():
         ]
         data_prep.binary_mask = np.random.randint(0, 2, [256, 256, 1]).astype(np.uint8)
         data_prep.instance_mask = np.zeros([256, 256, 1], dtype=np.uint16)
+        data_prep.nuclei_img = np.zeros([256, 256, 1], dtype=np.uint16)
+        data_prep.membrane_img = np.zeros([256, 256, 1], dtype=np.uint16)
         example = data_prep.prepare_example(data_folders[0], marker="CD4")
         # check keys in example
         assert set(example.keys()) == set(
             [
-                "mplex_img", "binary_mask", "instance_mask", "imaging_platform",
-                "marker_activity_mask", "dataset", "marker", "folder_name", "activity_df",
+                "mplex_img", "binary_mask", "instance_mask", "imaging_platform", "nuclei_img",
+                "membrane_img", "marker_activity_mask", "dataset", "marker", "folder_name",
+                "activity_df",
             ]
         )
 
@@ -503,6 +511,8 @@ def test_serialize_example():
         ]
         data_prep.binary_mask = np.random.randint(0, 2, [256, 256, 1]).astype(np.uint8)
         data_prep.instance_mask = np.zeros([256, 256, 1], dtype=np.uint16)
+        data_prep.nuclei_img = np.zeros([256, 256, 1], dtype=np.uint16)
+        data_prep.membrane_img = np.zeros([256, 256, 1], dtype=np.uint16)
         example = data_prep.prepare_example(os.path.join(temp_dir, "fov_1"), marker="CD4")
         serialized_example = data_prep.serialize_example(copy.deepcopy(example))
         deserialized_dict = tf.io.parse_single_example(serialized_example, feature_description)
