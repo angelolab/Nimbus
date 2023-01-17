@@ -370,7 +370,8 @@ class SegmentationTFRecords:
 
             # check if selected markers are in normalization dict
             verify_in_list(
-                selected_markers=self.selected_markers,
+                selected_markers=self.selected_markers + self.nuclei_channels +
+                self.membrane_channels,
                 normalization_dict_keys=self.normalization_dict.keys(),
             )
         else:
