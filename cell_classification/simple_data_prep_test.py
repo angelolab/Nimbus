@@ -38,8 +38,11 @@ def test_get_marker_activity():
             selected_markers=["CD4"],
             imaging_platform="test",
             dataset="test",
+            tissue_type="test",
             tile_size=[256, 256],
             stride=[256, 256],
+            nuclei_channels=["CD56"],
+            membrane_channels=["CD57"],
         )
         data_prep.load_and_check_input()
         marker = "CD4"

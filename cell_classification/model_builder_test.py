@@ -66,9 +66,12 @@ def test_prep_data():
         trainer.prep_data()
         val_dset = iter(trainer.validation_dataset)
         val_batch = next(val_dset)
-        assert set(val_batch.keys()) == set([
-                "mplex_img", "binary_mask", "instance_mask", "folder_name", "marker", "dataset",
-                "imaging_platform", "marker_activity_mask", "activity_df"]
+        assert set(val_batch.keys()) == set(
+            [
+                "mplex_img", "binary_mask", "instance_mask", "nuclei_img", "membrane_img",
+                "folder_name", "marker", "dataset", "imaging_platform", "marker_activity_mask",
+                "activity_df", 'tissue_type'
+            ]
         )
 
 

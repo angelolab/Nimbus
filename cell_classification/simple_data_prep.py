@@ -5,11 +5,12 @@ from segmentation_data_prep import SegmentationTFRecords
 class SimpleTFRecords(SegmentationTFRecords):
     """Prepares the data for the segmentation model"""
     def __init__(
-        self, data_dir, cell_table_path, imaging_platform, dataset, tile_size, stride,
-        tf_record_path, selected_markers=None, normalization_dict_path=None,
-        normalization_quantile=0.999, segmentation_naming_convention=None,
-        segmentation_fname="cell_segmentation",  exclude_background_tiles=False, resize=None,
-        img_suffix=".tiff", sample_key="SampleID", segment_label_key="labels", gt_suffix="_gt",
+        self, data_dir, cell_table_path, imaging_platform, dataset, tissue_type, tile_size, stride,
+        tf_record_path, nuclei_channels, membrane_channels, selected_markers=None,
+        normalization_dict_path=None, normalization_quantile=0.999,
+        segmentation_naming_convention=None, segmentation_fname="cell_segmentation",
+        exclude_background_tiles=False, resize=None, img_suffix=".tiff", sample_key="SampleID",
+        segment_label_key="labels", gt_suffix="_gt",
 
     ):
         """Initializes SegmentationTFRecords and loads everything except the images
@@ -23,6 +24,8 @@ class SimpleTFRecords(SegmentationTFRecords):
                 The imaging platform used to generate the multiplexed imaging data
             dataset (str):
                 The dataset where the imaging data comes from
+            tissue_type (str):
+                The tissue type of the imaging data
             tile_size list [int,int]:
                 The size of the tiles to use for the segmentation model
             stride list [int,int]:
@@ -56,11 +59,13 @@ class SimpleTFRecords(SegmentationTFRecords):
         super().__init__(
             data_dir=data_dir, cell_table_path=cell_table_path, imaging_platform=imaging_platform,
             dataset=dataset, tile_size=tile_size, stride=stride, tf_record_path=tf_record_path,
+            nuclei_channels=nuclei_channels, membrane_channels=membrane_channels,
             selected_markers=selected_markers, normalization_dict_path=normalization_dict_path,
             normalization_quantile=normalization_quantile, segmentation_fname=segmentation_fname,
             segmentation_naming_convention=segmentation_naming_convention, resize=resize,
             exclude_background_tiles=exclude_background_tiles, img_suffix=img_suffix,
-            sample_key=sample_key, segment_label_key=segment_label_key, conversion_matrix_path=None
+            sample_key=sample_key, segment_label_key=segment_label_key, tissue_type=tissue_type,
+            conversion_matrix_path=None,
         )
         self.selected_markers = selected_markers
         self.data_dir = data_dir
@@ -70,6 +75,7 @@ class SimpleTFRecords(SegmentationTFRecords):
         self.segment_label_key = segment_label_key
         self.sample_key = sample_key
         self.dataset = dataset
+        self.tissue_type = tissue_type
         self.imaging_platform = imaging_platform
         self.tf_record_path = tf_record_path
         self.cell_table_path = cell_table_path
@@ -80,6 +86,8 @@ class SimpleTFRecords(SegmentationTFRecords):
         self.resize = resize
         self.img_suffix = img_suffix
         self.gt_suffix = gt_suffix
+        self.nuclei_channels = nuclei_channels
+        self.membrane_channels = membrane_channels
 
     def get_marker_activity(self, sample_name, marker):
         """Gets the marker activity for the given labels
