@@ -17,7 +17,7 @@ class SegmentationTFRecords:
 
     def __init__(
         self, data_dir, cell_table_path, conversion_matrix_path, imaging_platform, dataset,
-        tile_size, stride, tf_record_path, nuclei_channels=[], membrane_channels=[],
+        tissue_type, tile_size, stride, tf_record_path, nuclei_channels=[], membrane_channels=[],
         selected_markers=None, normalization_dict_path=None, normalization_quantile=0.999,
         cell_type_key="cluster_labels", sample_key="SampleID", segment_label_key="labels",
         segmentation_fname="cell_segmentation", segmentation_naming_convention=None,
@@ -36,6 +36,8 @@ class SegmentationTFRecords:
                 The imaging platform used to generate the multiplexed imaging data
             dataset (str):
                 The dataset where the imaging data comes from
+            tissue_type (str):
+                The tissue type of the data
             tile_size list [int,int]:
                 The size of the tiles to use for the segmentation model
             stride list [int,int]:
@@ -81,6 +83,7 @@ class SegmentationTFRecords:
         self.segment_label_key = segment_label_key
         self.sample_key = sample_key
         self.dataset = dataset
+        self.tissue_type = tissue_type
         self.imaging_platform = imaging_platform
         self.tf_record_path = tf_record_path
         self.cell_type_key = cell_type_key
@@ -263,6 +266,7 @@ class SegmentationTFRecords:
             "imaging_platform": self.imaging_platform,
             "marker_activity_mask": marker_activity_mask.astype(np.uint8),
             "dataset": self.dataset,
+            "tissue_type": self.tissue_type,
             "marker": marker,
             "activity_df": marker_activity,
             "folder_name": fov,
@@ -564,6 +568,7 @@ feature_description = {
     "imaging_platform": tf.io.RaggedFeature(tf.int64),
     "marker_activity_mask": tf.io.RaggedFeature(tf.string),
     "dataset": tf.io.RaggedFeature(tf.int64),
+    "tissue_type": tf.io.RaggedFeature(tf.int64),
     "marker": tf.io.RaggedFeature(tf.int64),
     "activity_df": tf.io.RaggedFeature(tf.int64),
     "folder_name": tf.io.RaggedFeature(tf.int64),
@@ -579,7 +584,9 @@ def parse_dict(deserialized_dict):
         a dictionary of tensors and metadata strings
     """
     example = {}
-    for key in ["dataset", "marker", "imaging_platform", "folder_name", "activity_df"]:
+    for key in [
+            "dataset", "tissue_type", "marker", "imaging_platform", "folder_name", "activity_df"
+    ]:
         example[key] = tf.strings.unicode_encode(
             tf.cast(deserialized_dict[key], tf.int32), "UTF-8"
         )

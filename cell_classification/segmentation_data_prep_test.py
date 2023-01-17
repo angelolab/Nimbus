@@ -4,7 +4,7 @@ import tempfile
 import numpy as np
 import pandas as pd
 import json
-from tifffile import imwrite
+from tifffile import imwrite, imread
 from segmentation_data_prep import SegmentationTFRecords, feature_description, parse_dict
 import copy
 import tensorflow as tf
@@ -18,9 +18,9 @@ def prep_object(
     data_prep = SegmentationTFRecords(
         data_dir=data_dir, cell_table_path=cell_table_path,
         conversion_matrix_path=conversion_matrix_path, imaging_platform="imaging_platform",
-        dataset="dataset", tile_size=tile_size, stride=stride, tf_record_path=tf_record_path,
-        normalization_dict_path=normalization_dict_path, selected_markers=selected_markers,
-        normalization_quantile=normalization_quantile,
+        dataset="dataset", tissue_type="tissue_type", tile_size=tile_size, stride=stride,
+        tf_record_path=tf_record_path, normalization_dict_path=normalization_dict_path,
+        selected_markers=selected_markers, normalization_quantile=normalization_quantile,
         segmentation_naming_convention=segmentation_naming_convention
     )
     return data_prep
@@ -333,7 +333,41 @@ def test_get_inst_binary_masks():
 
 
 def test_get_composite_image():
-    pass
+    with tempfile.TemporaryDirectory() as temp_dir:
+        data_prep, data_folders, _, _ = prep_object_and_inputs(temp_dir)
+
+        # add channels to data_prep to ensure that the normalization_dict is constructed for them
+        data_prep.nuclei_channels = ["CD56", "CD57"]
+        data_prep.membrane_channels = ["CD11c", "CD4"]
+        data_prep.normalization_dict_path = None
+        data_prep.load_and_check_input()
+        nuclei_img = data_prep.get_composite_image(
+            data_folders[0], channels=data_prep.nuclei_channels
+        )
+        membrane_img = data_prep.get_composite_image(
+            data_folders[0], channels=data_prep.membrane_channels
+        )
+
+        # load the images and check against the composite image
+        nuclei_img_loaded = []
+        for chan in data_prep.nuclei_channels:
+            img = imread(os.path.join(data_folders[0], chan + ".tiff"))
+            img /= data_prep.normalization_dict[chan]
+            img = img.clip(0, 1)
+            nuclei_img_loaded.append(img)
+        nuclei_img_loaded = np.mean(np.stack(nuclei_img_loaded, axis=-1), axis=-1)[..., np.newaxis]
+        assert np.array_equal(nuclei_img, nuclei_img_loaded)
+
+        membrane_img_loaded = []
+        for chan in data_prep.membrane_channels:
+            img = imread(os.path.join(data_folders[0], chan + ".tiff"))
+            img /= data_prep.normalization_dict[chan]
+            img = img.clip(0, 1)
+            membrane_img_loaded.append(img)
+        membrane_img_loaded = np.mean(
+            np.stack(membrane_img_loaded, axis=-1), axis=-1
+        )[..., np.newaxis]
+        assert np.array_equal(membrane_img, membrane_img_loaded)
 
 
 def test_get_marker_activity():
@@ -490,7 +524,7 @@ def test_prepare_example():
             [
                 "mplex_img", "binary_mask", "instance_mask", "imaging_platform", "nuclei_img",
                 "membrane_img", "marker_activity_mask", "dataset", "marker", "folder_name",
-                "activity_df",
+                "activity_df", "tissue_type"
             ]
         )
 
@@ -523,7 +557,7 @@ def test_serialize_example():
         assert set(parsed_example.keys()) == set(example.keys())
 
         # check string features
-        for key in ["dataset", "marker", "imaging_platform", "folder_name"]:
+        for key in ["dataset", "marker", "imaging_platform", "folder_name", 'tissue_type']:
             assert example[key] == parsed_example[key]
         # check df features
         for key in ["activity_df"]:
@@ -561,7 +595,7 @@ def test_make_tf_record():
         # check if serialized example has the right keys
         assert set(parsed_dict.keys()) == set(example.keys())
         # check string features
-        for key in ["dataset", "marker", "imaging_platform", "folder_name"]:
+        for key in ["dataset", "marker", "imaging_platform", "folder_name", "tissue_type"]:
             assert example[key] == parsed_dict[key]
         # check df features, empty df is also okay
         for key in ["activity_df"]:

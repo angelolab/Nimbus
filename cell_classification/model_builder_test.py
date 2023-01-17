@@ -70,7 +70,7 @@ def test_prep_data():
             [
                 "mplex_img", "binary_mask", "instance_mask", "nuclei_img", "membrane_img",
                 "folder_name", "marker", "dataset", "imaging_platform", "marker_activity_mask",
-                "activity_df"
+                "activity_df", 'tissue_type'
             ]
         )
 

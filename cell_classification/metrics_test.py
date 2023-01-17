@@ -115,5 +115,5 @@ def test_HDF5Generator():
             assert set(list(sample.keys())) == set([
                 'binary_mask', 'dataset', 'folder_name', 'imaging_platform', 'instance_mask',
                 'marker', 'marker_activity_mask', 'membrane_img', 'mplex_img', 'nuclei_img',
-                'prediction', 'prediction_mean', 'activity_df'
+                'prediction', 'prediction_mean', 'activity_df', 'tissue_type'
             ])
