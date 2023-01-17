@@ -369,6 +369,13 @@ def test_get_composite_image():
         )[..., np.newaxis]
         assert np.array_equal(membrane_img, membrane_img_loaded)
 
+        # test if the function works for a single channel
+        single_channel_img = data_prep.get_composite_image(data_folders[0], channels=["CD4"])
+        single_channel_img_loaded = imread(os.path.join(data_folders[0], "CD4.tiff"))
+        single_channel_img_loaded /= data_prep.normalization_dict["CD4"]
+        single_channel_img_loaded = single_channel_img_loaded.clip(0, 1)[..., np.newaxis]
+        assert np.array_equal(single_channel_img, single_channel_img_loaded)
+
 
 def test_get_marker_activity():
 

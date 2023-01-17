@@ -352,8 +352,8 @@ class SegmentationTFRecords:
         if not isinstance(self.selected_markers, list):
             self.selected_markers = [self.selected_markers]
 
-        # check if selected markers are in data folders
-        for marker in self.selected_markers:
+        # check if selected markers and nuclei/membrane channels are in data folders
+        for marker in self.selected_markers + self.nuclei_channels + self.membrane_channels:
             exists = False
             for folder in self.data_folders:
                 if os.path.exists(os.path.join(folder, marker + self.img_suffix)):
