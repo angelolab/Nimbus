@@ -11,6 +11,7 @@ import pandas as pd
 import argparse
 from tqdm import tqdm
 from metrics import calc_scores
+import seaborn as sns
 
 
 def segmentation_to_boundaries(labels):
@@ -79,12 +80,14 @@ def plot_overlay(example, save_dir=None, save_file=None, dpi=160):
     plt.close()
 
 
-def plot_together(example, save_dir=None, save_file=None, dpi=160):
+def plot_together(example, keys, save_dir=None, save_file=None, dpi=160):
     """
     Plot the marker image, the marker activity segmentation and the instance segmentation overlayed
     Args:
         example (dict):
             Dictionary with keys "mplex_img", "marker_activity_mask", "instance_mask"
+        keys (list):
+            List of keys to plot
         dpi (float):
             The resolution of the image to save, ignored if save_dir is None
         save_dir (str):
@@ -95,28 +98,34 @@ def plot_together(example, save_dir=None, save_file=None, dpi=160):
     """
     colors = [(0, 0, 0), (0, 1, 0), (0, 0, 1), (1, 0, 0)]
     cmap = LinearSegmentedColormap.from_list("BRGB", colors, N=4)
-    fig, ax = plt.subplots(1, 3)
-    ax[0].imshow(example["mplex_img"].numpy().clip(0, 1), interpolation="nearest", cmap="gray")
-    ax[1].imshow(example["binary_mask"].numpy(), interpolation="nearest", cmap="gray")
-    ax[2].imshow(
-        example["marker_activity_mask"].numpy(), interpolation="nearest", cmap=cmap, vmin=0, vmax=3
-    )
-    ax[0].title.set_text("mplex img")
-    ax[1].title.set_text("binary_mask")
-    ax[2].title.set_text("marker_activity_mask")
-    pos = mpatches.Patch(color=colors[1], label="Positive")
-    neg = mpatches.Patch(color=colors[0], label="Negative")
-    und = mpatches.Patch(color=colors[3], label="Undetermined")
+    fig, ax = plt.subplots(1, len(keys))
+    fig.suptitle(example["marker"])
+    for i, key in enumerate(keys):
+        img = example[key]
+        if not isinstance(img, np.ndarray):
+            img = img.numpy()
+        if key == "marker_activity_mask":
+            ax[i].imshow(img, interpolation="nearest", cmap=cmap, vmin=0, vmax=3)
+            pos = mpatches.Patch(color=colors[1], label="Positive")
+            neg = mpatches.Patch(color=colors[0], label="Negative")
+            und = mpatches.Patch(color=colors[3], label="Undetermined")
+            ax[i].legend(
+                handles=[pos, neg, und],
+                loc="upper center",
+                bbox_to_anchor=(-0.1, -0.2),
+                fancybox=True,
+                ncol=1,
+                fontsize=6,
+            )
+        else:
+            ax[i].imshow(img, interpolation="nearest")
+        ax[i].set_xticks([])
+        ax[i].set_yticks([])
+        ax[i].set_title(key, fontsize=6)
     for axx in ax:
         box = axx.get_position()
         axx.set_position([box.x0, box.y0 + box.height * 0.1, box.width, box.height * 0.9])
-    ax[1].legend(
-        handles=[pos, neg, und],
-        loc="upper center",
-        bbox_to_anchor=(-0.1, -0.2),
-        fancybox=True,
-        ncol=3,
-    )
+    fig.tight_layout()
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
         plt.savefig(os.path.join(save_dir, save_file), dpi=dpi)
@@ -230,7 +239,7 @@ def subset_plots(
     pred_key="prediction",
 ):
     """
-    Plot the activity of each marker in the subset_list
+    Plot the performance metrics of each marker in the subset_list
     Args:
         activity_df (pd.DataFrame):
             A dataframe containing the activity of each marker
@@ -272,7 +281,7 @@ def subset_plots(
             else:
                 continue
             df = subset_activity_df(activity_df, subset_dict)
-            thresholds = np.linspace(0.01, 1, 50)
+            thresholds = np.linspace(0.01, 1, 100)
             metrics = [calc_scores(df[gt_key], df[pred_key], t) for t in thresholds]
             metric_dict = {
                 "threshold": thresholds,
@@ -301,6 +310,68 @@ def subset_plots(
     else:
         plt.show()
     plt.close()
+
+
+def heatmap_plot(activity_df, subset_list, save_dir=None, save_file=None, dpi=160,
+    gt_key="activity", pred_key="prediction",
+):
+    """Plot the activity of each marker in the subset_list
+        Args:
+            activity_df (pd.DataFrame):
+                A dataframe containing the activity of each marker
+            subset_list (list):
+                A list of markers you want to plot
+            save_dir (str):
+                If specified, a directory where we will save the plot
+            save_file (str):
+                If save_dir specified, specify a file name you wish to save to.
+                Ignored if save_dir is None
+            dpi (int):
+                The resolution of the image to save, ignored if save_dir is None
+            gt_key (str):
+                The key in the activity_df that contains the ground truth
+            pred_key (str):
+                The key in the activity_df that contains the prediction
+    """
+    # prepare subset_uniques
+    subset_uniques = {}
+    for subset in subset_list:
+        subset_uniques[subset] = np.unique(getattr(activity_df, subset)).tolist()
+    #
+    thresholds = np.linspace(0.01, 1, 100)
+    for key in subset_uniques:
+        results = {}
+        for class_ in subset_uniques[key]:
+            df = subset_activity_df(activity_df, {key: class_})
+            metrics = [calc_scores(df[gt_key], df[pred_key], t) for t in thresholds]
+            metrics = pd.DataFrame(metrics)
+            idx = metrics["f1_score"].idxmax()
+            results[class_] = {
+                "threshold": thresholds[idx],
+                "precision": metrics["precision"][idx],
+                "recall": metrics["recall"][idx],
+                "specificity": metrics["specificity"][idx],
+                "f1_score": metrics["f1_score"][idx],
+            }
+        results = pd.DataFrame(results).T
+        # save results as csv
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
+            results.to_csv(os.path.join(save_dir, save_file.split(".")[0]+ "_" + key + ".csv"))
+        # plot heatmap
+        ax = sns.heatmap(results, annot=True, cbar=False, cmap="viridis", vmin=0, vmax=1)
+        ax.set(xlabel="", ylabel="")
+        ax.xaxis.tick_top()
+        ax.xaxis.set_label_position("top")
+        ax.set_title("Split by " + str(key))
+        # save figure with plt
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
+            plt.savefig(os.path.join(save_dir, save_file), dpi=dpi)
+            plt.close()
+        else:
+            plt.show()
+        plt.close()
 
 
 if __name__ == "__main__":
