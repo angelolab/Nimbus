@@ -14,3 +14,4 @@ toml
 tables==3.7.0
 packaging==21.3
 h5py==3.7.0
+seaborn==0.12.0
