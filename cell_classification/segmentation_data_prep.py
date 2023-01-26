@@ -17,11 +17,11 @@ class SegmentationTFRecords:
 
     def __init__(
         self, data_dir, cell_table_path, conversion_matrix_path, imaging_platform, dataset,
-        tile_size, stride, tf_record_path, selected_markers=None, normalization_dict_path=None,
-        normalization_quantile=0.999, cell_type_key="cluster_labels", sample_key="SampleID",
-        segmentation_fname="cell_segmentation", segment_label_key="labels",
-        segmentation_naming_convention=None, exclude_background_tiles=False, resize=None,
-        img_suffix=".tiff"
+        tissue_type, tile_size, stride, tf_record_path, nuclei_channels=[], membrane_channels=[],
+        selected_markers=None, normalization_dict_path=None, normalization_quantile=0.999,
+        cell_type_key="cluster_labels", sample_key="SampleID", segment_label_key="labels",
+        segmentation_fname="cell_segmentation", segmentation_naming_convention=None,
+        exclude_background_tiles=False, resize=None, img_suffix=".tiff",
     ):
         """Initializes SegmentationTFRecords and loads everything except the images
 
@@ -36,12 +36,18 @@ class SegmentationTFRecords:
                 The imaging platform used to generate the multiplexed imaging data
             dataset (str):
                 The dataset where the imaging data comes from
+            tissue_type (str):
+                The tissue type of the data
             tile_size list [int,int]:
                 The size of the tiles to use for the segmentation model
             stride list [int,int]:
                 The stride to tile the data
             tf_record_path (str):
                 The path to the tf record to make
+            nuclei_channels (list):
+                The channels that contain nuclei markers to make composite nuclei images
+            membrane_channels (list):
+                The channels that contain membrane markers to make composite membrane images
             selected_markers (list):
                 The markers of interest for generating the tf record. If None, all markers
                 mentioned in the conversion_matrix are used
@@ -77,6 +83,7 @@ class SegmentationTFRecords:
         self.segment_label_key = segment_label_key
         self.sample_key = sample_key
         self.dataset = dataset
+        self.tissue_type = tissue_type
         self.imaging_platform = imaging_platform
         self.tf_record_path = tf_record_path
         self.cell_type_key = cell_type_key
@@ -87,6 +94,8 @@ class SegmentationTFRecords:
         self.exclude_background_tiles = exclude_background_tiles
         self.resize = resize
         self.img_suffix = img_suffix
+        self.nuclei_channels = nuclei_channels
+        self.membrane_channels = membrane_channels
 
     def get_image(self, data_folder, marker):
         """Loads the images from a single data_folder
@@ -143,7 +152,35 @@ class SegmentationTFRecords:
             )
         return interior, instance_mask
 
-    def get_marker_activity(self, sample_name, conversion_matrix, marker):
+    def get_composite_image(self, data_folder, channels):
+        """Makes a composite image by averaging the given channels
+
+        Args:
+            data_folder (str):
+                The path to the data_folder
+            channels (list):
+                The channels to make the composite image from
+        Returns:
+            np.array:
+                The composite image
+        """
+        composite = []
+        if channels:
+            for channel in channels:
+                img = self.get_image(data_folder, channel)
+                img /= self.normalization_dict[channel]
+                img = img.clip(0, 1)
+                composite.append(img)
+            composite_img = np.mean(np.stack(composite, axis=-1), axis=-1)
+        else:
+            composite_img = np.zeros_like(self.binary_mask).astype(np.float32)
+        if self.resize:
+            composite_img = cv2.resize(
+                composite_img, None, fx=self.resize, fy=self.resize, interpolation=cv2.INTER_AREA
+            )
+        return composite_img
+
+    def get_marker_activity(self, sample_name, marker):
         """Gets the marker activity for the given labels
         Args:
             sample_name (str):
@@ -162,7 +199,7 @@ class SegmentationTFRecords:
         df = pd.DataFrame(
             {
                 "labels": self.sample_subset[self.segment_label_key],
-                "activity": conversion_matrix.loc[cell_types, marker].values,
+                "activity": self.conversion_matrix.loc[cell_types, marker].values,
                 "cell_type": cell_types,
             }
         )
@@ -212,7 +249,7 @@ class SegmentationTFRecords:
         mplex_img = mplex_img.clip(0, 1)
         fov = os.path.basename(data_folder)
         # get the cell types and marker activity mask
-        marker_activity, cell_types = self.get_marker_activity(fov, self.conversion_matrix, marker)
+        marker_activity, cell_types = self.get_marker_activity(fov, marker)
         marker_activity_mask = self.get_marker_activity_mask(
             self.instance_mask, self.binary_mask, marker_activity
         )
@@ -222,11 +259,14 @@ class SegmentationTFRecords:
             )
         return {
             "mplex_img": mplex_img.astype(np.float32),
+            "nuclei_img": self.nuclei_img.astype(np.float32),
+            "membrane_img": self.membrane_img.astype(np.float32),
             "binary_mask": self.binary_mask.astype(np.uint8),
             "instance_mask": self.instance_mask.astype(np.uint16),
             "imaging_platform": self.imaging_platform,
             "marker_activity_mask": marker_activity_mask.astype(np.uint8),
             "dataset": self.dataset,
+            "tissue_type": self.tissue_type,
             "marker": marker,
             "activity_df": marker_activity,
             "folder_name": fov,
@@ -234,7 +274,8 @@ class SegmentationTFRecords:
 
     def tile_example(
         self, example, spatial_keys=[
-            "mplex_img", "binary_mask", "instance_mask", "marker_activity_mask",
+            "mplex_img", "nuclei_img", "membrane_img", "binary_mask", "instance_mask",
+            "marker_activity_mask",
         ],
     ):
         """Tiles the example into a grid of tiles
@@ -296,6 +337,8 @@ class SegmentationTFRecords:
 
     def load_and_check_input(self):
         """Checks the input for correctness"""
+        self.cell_type_table = pd.read_csv(self.cell_table_path)
+        self.check_additional_inputs()
         # make tfrecord path
         os.makedirs(self.tf_record_path, exist_ok=True)
 
@@ -305,27 +348,12 @@ class SegmentationTFRecords:
             os.path.join(self.data_dir, folder) for folder in list_folders(self.data_dir)
         ]
 
-        # CONVERSION MATRIX
-        # read the file
-        validate_paths(self.conversion_matrix_path, data_prefix=False)
-        self.conversion_matrix = pd.read_csv(self.conversion_matrix_path, index_col=0)
-
-        # check if markers were selected or take all markers from conversion matrix
-        if self.selected_markers is None:
-            self.selected_markers = list(self.conversion_matrix.columns)
-
         # check if selected markers are a list
         if not isinstance(self.selected_markers, list):
             self.selected_markers = [self.selected_markers]
 
-        # check if selected markers are in conversion matrix
-        verify_in_list(
-            selected_markers=self.selected_markers,
-            conversion_matrix_columns=self.conversion_matrix.columns,
-        )
-
-        # check if selected markers are in data folders
-        for marker in self.selected_markers:
+        # check if selected markers and nuclei/membrane channels are in data folders
+        for marker in self.selected_markers + self.nuclei_channels + self.membrane_channels:
             exists = False
             for folder in self.data_folders:
                 if os.path.exists(os.path.join(folder, marker + self.img_suffix)):
@@ -342,7 +370,8 @@ class SegmentationTFRecords:
 
             # check if selected markers are in normalization dict
             verify_in_list(
-                selected_markers=self.selected_markers,
+                selected_markers=self.selected_markers + self.nuclei_channels +
+                self.membrane_channels,
                 normalization_dict_keys=self.normalization_dict.keys(),
             )
         else:
@@ -350,23 +379,13 @@ class SegmentationTFRecords:
             # or segmentation_fname not in data_folders
             self.normalization_dict = self.calculate_normalization_matrix(
                 self.data_folders,
-                self.selected_markers,
+                self.selected_markers + self.nuclei_channels + self.membrane_channels,
             )
         # check if normalization_quantile is in [0, 1]
         if self.normalization_quantile < 0 or self.normalization_quantile > 1:
             raise ValueError("The normalization_quantile is not in [0, 1]")
 
         # CELL TYPE TABLE
-        # load cell_types.csv
-        self.cell_type_table = pd.read_csv(self.cell_table_path)
-        self.cell_type_table.drop(self.cell_type_table.columns.difference([
-            self.cell_type_key, self.segment_label_key, self.sample_key,
-        ]), 1, inplace=True)
-
-        # check if cell_type_key is in cell_type_table
-        if self.cell_type_key not in self.cell_type_table.columns:
-            raise ValueError("The cell_type_key is not in the cell_type_table")
-
         # check if segment_label_key is in cell_type_table
         if self.segment_label_key not in self.cell_type_table.columns:
             raise ValueError("The segment_label_key is not in the cell_type_table")
@@ -380,6 +399,33 @@ class SegmentationTFRecords:
             sample_names=self.cell_type_table[self.sample_key].values,
             data_folders=list_folders(self.data_dir),
             warn=True
+        )
+
+    def check_additional_inputs(self):
+        """Checks the additional inputs for correctness"""
+        # CONVERSION MATRIX
+        # read the file
+        validate_paths(self.conversion_matrix_path, data_prefix=False)
+        self.conversion_matrix = pd.read_csv(self.conversion_matrix_path, index_col=0)
+
+        # check if markers were selected or take all markers from conversion matrix
+        if self.selected_markers is None:
+            self.selected_markers = list(self.conversion_matrix.columns)
+
+        # CELL TYPE TABLE
+        # drop all columns except cell_type_key, segment_label_key, sample_key
+        self.cell_type_table.drop(self.cell_type_table.columns.difference([
+            self.cell_type_key, self.segment_label_key, self.sample_key,
+        ]), 1, inplace=True)
+
+        # check if cell_type_key is in cell_type_table
+        if self.cell_type_key not in self.cell_type_table.columns:
+            raise ValueError("The cell_type_key is not in the cell_type_table")
+
+        # check if selected markers are in conversion matrix
+        verify_in_list(
+            selected_markers=self.selected_markers,
+            conversion_matrix_columns=self.conversion_matrix.columns,
         )
 
         # make cell_types lowercase to make matching easier
@@ -410,6 +456,8 @@ class SegmentationTFRecords:
                 self.cell_type_table[self.sample_key] == os.path.basename(data_folder)
             ]
             self.binary_mask, self.instance_mask = self.get_inst_binary_masks(data_folder)
+            self.nuclei_img = self.get_composite_image(data_folder, self.nuclei_channels)
+            self.membrane_img = self.get_composite_image(data_folder, self.membrane_channels)
             for marker in tqdm(self.selected_markers):
                 example = self.prepare_example(data_folder, marker)
                 if self.tile_size:
@@ -484,6 +532,7 @@ class SegmentationTFRecords:
                 The normalization dict
         """
         # iterate through the data_folders and calculate the quantiles
+        selected_markers = list(set(selected_markers))  # remove duplicates
         quantiles = {}
         print("Calculating normalization quantiles...")
         for data_folder in tqdm(data_folders):
@@ -513,11 +562,14 @@ class SegmentationTFRecords:
 
 feature_description = {
     "mplex_img": tf.io.RaggedFeature(tf.string),
+    "nuclei_img": tf.io.RaggedFeature(tf.string),
+    "membrane_img": tf.io.RaggedFeature(tf.string),
     "binary_mask": tf.io.RaggedFeature(tf.string),
     "instance_mask": tf.io.RaggedFeature(tf.string),
     "imaging_platform": tf.io.RaggedFeature(tf.int64),
     "marker_activity_mask": tf.io.RaggedFeature(tf.string),
     "dataset": tf.io.RaggedFeature(tf.int64),
+    "tissue_type": tf.io.RaggedFeature(tf.int64),
     "marker": tf.io.RaggedFeature(tf.int64),
     "activity_df": tf.io.RaggedFeature(tf.int64),
     "folder_name": tf.io.RaggedFeature(tf.int64),
@@ -533,7 +585,9 @@ def parse_dict(deserialized_dict):
         a dictionary of tensors and metadata strings
     """
     example = {}
-    for key in ["dataset", "marker", "imaging_platform", "folder_name", "activity_df"]:
+    for key in [
+            "dataset", "tissue_type", "marker", "imaging_platform", "folder_name", "activity_df"
+    ]:
         example[key] = tf.strings.unicode_encode(
             tf.cast(deserialized_dict[key], tf.int32), "UTF-8"
         )
@@ -541,11 +595,12 @@ def parse_dict(deserialized_dict):
             example[key] = example[key].numpy().decode()
     for key in ["binary_mask", "marker_activity_mask"]:
         example[key] = tf.io.decode_png(deserialized_dict[key][0], dtype=tf.uint8)
-    for key in ["mplex_img", "instance_mask"]:
+    for key in ["mplex_img", "nuclei_img", "membrane_img", "instance_mask"]:
         example[key] = tf.io.decode_png(deserialized_dict[key][0], dtype=tf.uint16)
-    example["mplex_img"] = tf.cast(example["mplex_img"], tf.float32) / tf.constant(
-        (np.iinfo(np.uint16).max), dtype=tf.float32
-    )
+    for key in ["mplex_img", "nuclei_img", "membrane_img"]:
+        example[key] = tf.cast(example[key], tf.float32) / tf.constant(
+            (np.iinfo(np.uint16).max), dtype=tf.float32
+        )
     if type(example["activity_df"]) == str:
         example["activity_df"] = pd.read_json(example["activity_df"])
     return example

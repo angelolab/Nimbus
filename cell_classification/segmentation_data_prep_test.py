@@ -4,7 +4,7 @@ import tempfile
 import numpy as np
 import pandas as pd
 import json
-from tifffile import imwrite
+from tifffile import imwrite, imread
 from segmentation_data_prep import SegmentationTFRecords, feature_description, parse_dict
 import copy
 import tensorflow as tf
@@ -14,7 +14,7 @@ def prep_object(
     data_dir="path", cell_table_path="path", conversion_matrix_path="path",
     normalization_dict_path="path", tf_record_path="path", tile_size=[256, 256], stride=[256, 256],
     normalization_quantile=0.999, selected_markers=None, segmentation_naming_convention=None,
-    imaging_platform="imaging_platform", dataset="dataset"
+    imaging_platform="imaging_platform", dataset="dataset", tissue_type="tissue_type",
 ):
     data_prep = SegmentationTFRecords(
         data_dir=data_dir, cell_table_path=cell_table_path,
@@ -149,7 +149,7 @@ def test_calculate_normalization_matrix():
         )
 
         # check if the normalization_dict has the correct values for stochastic images
-        for marker, std in zip(norm_dict.keys(), scale):
+        for marker, std in zip(selected_markers, scale):
             assert np.isclose(norm_dict[marker], std * 0.999, rtol=1e-3)
 
         # check if the normalization_dict is correctly written to the json file
@@ -157,8 +157,7 @@ def test_calculate_normalization_matrix():
         assert norm_dict_loaded == norm_dict
 
         # check if the normalization_dict has the correct keys
-        for marker in selected_markers:
-            assert marker in norm_dict.keys()
+        assert set(selected_markers) == set(norm_dict.keys())
 
 
 def test_load_and_check_input():
@@ -224,7 +223,7 @@ def test_load_and_check_input():
             index=["stromal", "FAP", "NK", "CD4", "CD14", "CD163"],
         )
         conversion_matrix_path = os.path.join(temp_dir, "conversion_matrix.csv")
-        conversion_matrix.to_csv(conversion_matrix_path, index=False)
+        conversion_matrix.to_csv(conversion_matrix_path, index=True)
         data_prep = copy.deepcopy(data_prep_working)
         data_prep.conversion_matrix_path = conversion_matrix_path
         data_prep.normalization_dict_path = os.path.join(temp_dir, "norm_dict.json")
@@ -240,7 +239,7 @@ def test_load_and_check_input():
             index=["stromal", "FAP", "NK", "CD4", "CD14", "CD163"],
         )
         conversion_matrix_path = os.path.join(temp_dir, "conversion_matrix.csv")
-        conversion_matrix.to_csv(conversion_matrix_path, index=False)
+        conversion_matrix.to_csv(conversion_matrix_path, index=True)
         data_prep = copy.deepcopy(data_prep_working)
         data_prep.selected_markers = ["ZYX"]
         data_prep.conversion_matrix_path = conversion_matrix_path
@@ -340,6 +339,51 @@ def test_get_inst_binary_masks():
         assert np.array_equal(np.squeeze(loaded_img), instance_mask)
 
 
+def test_get_composite_image():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        data_prep, data_folders, _, _ = prep_object_and_inputs(temp_dir)
+
+        # add channels to data_prep to ensure that the normalization_dict is constructed for them
+        data_prep.nuclei_channels = ["CD56", "CD57"]
+        data_prep.membrane_channels = ["CD11c", "CD4"]
+        data_prep.normalization_dict_path = None
+        data_prep.load_and_check_input()
+        nuclei_img = data_prep.get_composite_image(
+            data_folders[0], channels=data_prep.nuclei_channels
+        )
+        membrane_img = data_prep.get_composite_image(
+            data_folders[0], channels=data_prep.membrane_channels
+        )
+
+        # load the images and check against the composite image
+        nuclei_img_loaded = []
+        for chan in data_prep.nuclei_channels:
+            img = imread(os.path.join(data_folders[0], chan + ".tiff"))
+            img /= data_prep.normalization_dict[chan]
+            img = img.clip(0, 1)
+            nuclei_img_loaded.append(img)
+        nuclei_img_loaded = np.mean(np.stack(nuclei_img_loaded, axis=-1), axis=-1)[..., np.newaxis]
+        assert np.array_equal(nuclei_img, nuclei_img_loaded)
+
+        membrane_img_loaded = []
+        for chan in data_prep.membrane_channels:
+            img = imread(os.path.join(data_folders[0], chan + ".tiff"))
+            img /= data_prep.normalization_dict[chan]
+            img = img.clip(0, 1)
+            membrane_img_loaded.append(img)
+        membrane_img_loaded = np.mean(
+            np.stack(membrane_img_loaded, axis=-1), axis=-1
+        )[..., np.newaxis]
+        assert np.array_equal(membrane_img, membrane_img_loaded)
+
+        # test if the function works for a single channel
+        single_channel_img = data_prep.get_composite_image(data_folders[0], channels=["CD4"])
+        single_channel_img_loaded = imread(os.path.join(data_folders[0], "CD4.tiff"))
+        single_channel_img_loaded /= data_prep.normalization_dict["CD4"]
+        single_channel_img_loaded = single_channel_img_loaded.clip(0, 1)[..., np.newaxis]
+        assert np.array_equal(single_channel_img, single_channel_img_loaded)
+
+
 def test_get_marker_activity():
 
     data_prep = prep_object()
@@ -351,8 +395,9 @@ def test_get_marker_activity():
     fov_1_subset = cell_table[cell_table.SampleID == sample_name]
     data_prep.sample_subset = fov_1_subset
     conversion_matrix.index = conversion_matrix.index.str.lower()
+    data_prep.conversion_matrix = conversion_matrix
     fov_1_subset["cluster_labels"] = fov_1_subset["cluster_labels"].str.lower()
-    marker_activity, _ = data_prep.get_marker_activity(sample_name, conversion_matrix, marker)
+    marker_activity, _ = data_prep.get_marker_activity(sample_name, marker)
     # check if the we get marker_acitivity for all labels in the fov_1 subset
     assert np.array_equal(marker_activity.labels, fov_1_subset.labels)
 
@@ -418,6 +463,8 @@ def test_tile_example(tile_size):
     example = {
         "mplex_img": np.random.rand(512, 512, 3).astype(np.float32),
         "binary_mask": np.random.randint(0, 2, [512, 512, 1]).astype(np.uint8),
+        "nuclei_img": np.random.rand(512, 512, 1).astype(np.float32),
+        "membrane_img": np.random.rand(512, 512, 1).astype(np.float32),
         "instance_mask": instance_mask,
         "marker_activity_mask": np.random.randint(0, 2, [512, 512, 21]).astype(np.uint8),
         "dataset": "test_dataset",
@@ -483,12 +530,15 @@ def test_prepare_example():
         ]
         data_prep.binary_mask = np.random.randint(0, 2, [256, 256, 1]).astype(np.uint8)
         data_prep.instance_mask = np.zeros([256, 256, 1], dtype=np.uint16)
+        data_prep.nuclei_img = np.zeros([256, 256, 1], dtype=np.uint16)
+        data_prep.membrane_img = np.zeros([256, 256, 1], dtype=np.uint16)
         example = data_prep.prepare_example(data_folders[0], marker="CD4")
         # check keys in example
         assert set(example.keys()) == set(
             [
-                "mplex_img", "binary_mask", "instance_mask", "imaging_platform",
-                "marker_activity_mask", "dataset", "marker", "folder_name", "activity_df",
+                "mplex_img", "binary_mask", "instance_mask", "imaging_platform", "nuclei_img",
+                "membrane_img", "marker_activity_mask", "dataset", "marker", "folder_name",
+                "activity_df", "tissue_type"
             ]
         )
 
@@ -509,6 +559,8 @@ def test_serialize_example():
         ]
         data_prep.binary_mask = np.random.randint(0, 2, [256, 256, 1]).astype(np.uint8)
         data_prep.instance_mask = np.zeros([256, 256, 1], dtype=np.uint16)
+        data_prep.nuclei_img = np.zeros([256, 256, 1], dtype=np.uint16)
+        data_prep.membrane_img = np.zeros([256, 256, 1], dtype=np.uint16)
         example = data_prep.prepare_example(os.path.join(temp_dir, "fov_1"), marker="CD4")
         serialized_example = data_prep.serialize_example(copy.deepcopy(example))
         deserialized_dict = tf.io.parse_single_example(serialized_example, feature_description)
@@ -519,7 +571,7 @@ def test_serialize_example():
         assert set(parsed_example.keys()) == set(example.keys())
 
         # check string features
-        for key in ["dataset", "marker", "imaging_platform", "folder_name"]:
+        for key in ["dataset", "marker", "imaging_platform", "folder_name", 'tissue_type']:
             assert example[key] == parsed_example[key]
         # check df features
         for key in ["activity_df"]:
@@ -557,7 +609,7 @@ def test_make_tf_record():
         # check if serialized example has the right keys
         assert set(parsed_dict.keys()) == set(example.keys())
         # check string features
-        for key in ["dataset", "marker", "imaging_platform", "folder_name"]:
+        for key in ["dataset", "marker", "imaging_platform", "folder_name", "tissue_type"]:
             assert example[key] == parsed_dict[key]
         # check df features, empty df is also okay
         for key in ["activity_df"]:
