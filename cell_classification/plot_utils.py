@@ -244,7 +244,7 @@ def subset_plots(
         activity_df (pd.DataFrame):
             A dataframe containing the activity of each marker
         subset_list (list):
-            A list of markers you want to plot
+            A list of activity_df colnames that will be used to subset your data
         save_dir (str):
             If specified, a directory where we will save the plot
         save_file (str):
@@ -312,15 +312,16 @@ def subset_plots(
     plt.close()
 
 
-def heatmap_plot(activity_df, subset_list, save_dir=None, save_file=None, dpi=160,
-    gt_key="activity", pred_key="prediction",
+def heatmap_plot(
+    activity_df, subset_list, save_dir=None, save_file=None, dpi=160, gt_key="activity",
+    pred_key="prediction",
 ):
     """Plot the activity of each marker in the subset_list
         Args:
             activity_df (pd.DataFrame):
                 A dataframe containing the activity of each marker
             subset_list (list):
-                A list of markers you want to plot
+                A list of activity_df colnames that will be used to subset your data
             save_dir (str):
                 If specified, a directory where we will save the plot
             save_file (str):
@@ -357,7 +358,7 @@ def heatmap_plot(activity_df, subset_list, save_dir=None, save_file=None, dpi=16
         # save results as csv
         if save_dir:
             os.makedirs(save_dir, exist_ok=True)
-            results.to_csv(os.path.join(save_dir, save_file.split(".")[0]+ "_" + key + ".csv"))
+            results.to_csv(os.path.join(save_dir, save_file.split(".")[0] + "_" + key + ".csv"))
         # plot heatmap
         ax = sns.heatmap(results, annot=True, cbar=False, cmap="viridis", vmin=0, vmax=1)
         ax.set(xlabel="", ylabel="")

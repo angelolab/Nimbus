@@ -3,7 +3,7 @@ from segmentation_data_prep import parse_dict, feature_description
 from segmentation_data_prep_test import prep_object_and_inputs
 import pytest
 import tempfile
-from plot_utils import plot_overlay, plot_together, plot_average_roc, subset_plots
+from plot_utils import plot_overlay, plot_together, plot_average_roc, subset_plots, heatmap_plot
 from plot_utils import plot_metrics_against_threshold, subset_activity_df, collapse_activity_dfs
 from metrics_test import make_pred_list
 from metrics import calc_roc, average_roc, calc_metrics
@@ -45,7 +45,8 @@ def test_plot_together():
         example_encoded = tf.io.parse_single_example(record, feature_description)
         example = parse_dict(example_encoded)
         plot_together(
-            example, save_dir=plot_path, save_file=f"{example['folder_name']}_together.png"
+            example, ["mplex_img", "nuclei_img", "marker_activity_mask"], save_dir=plot_path,
+            save_file=f"{example['folder_name']}_together.png"
         )
 
         # check if plot was saved
@@ -122,3 +123,17 @@ def test_subset_plots():
 
         # check if plots were saved
         assert os.path.exists(os.path.join(plot_path, "split_by_marker.png"))
+
+
+def test_heatmap_plot():
+    pred_list = make_pred_list()
+    activity_df = collapse_activity_dfs(pred_list)
+    with tempfile.TemporaryDirectory() as temp_dir:
+        plot_path = os.path.join(temp_dir, "plots")
+        os.makedirs(plot_path, exist_ok=True)
+        heatmap_plot(
+            activity_df, ["marker"], save_dir=plot_path, save_file="heatmap.png"
+        )
+
+        # check if plot was saved
+        assert os.path.exists(os.path.join(plot_path, "heatmap.png"))
