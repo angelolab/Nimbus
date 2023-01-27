@@ -90,7 +90,7 @@ if __name__ == "__main__":
                 pred, keys=["mplex_img", "marker_activity_mask", "prediction"],
                 save_dir=os.path.join(params["eval_dir"], best_worst + "_predictions"),
                 save_file="worst_{}_{}_{}.png".format(
-                    i, pred["marker"] ,pred["dataset"], pred["folder_name"]
+                    i, pred["marker"], pred["dataset"], pred["folder_name"]
                 )
             )
 
