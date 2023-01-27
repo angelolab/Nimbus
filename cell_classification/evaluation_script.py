@@ -29,6 +29,18 @@ if __name__ == "__main__":
         help="Number of worst predictions to plot",
         default=20,
     )
+    parser.add_argument(
+        "--best_n",
+        type=int,
+        help="Number of best predictions to plot",
+        default=20,
+    )
+    parser.add_argument(
+        "--split_by_marker",
+        type=bool,
+        help="Split best/worst predictions by marker",
+        default=True,
+    )
     args = parser.parse_args()
     with open(args.params_path, "r") as f:
         params = toml.load(f)
@@ -55,14 +67,32 @@ if __name__ == "__main__":
         pickle.dump(roc, f)
 
     # find index of n worst predictions and save plots of them
-    worst_idx = np.argsort(roc["auc"])[-args.worst_n:]
-    for i, idx in enumerate(worst_idx):
-        pred = pred_list[idx]
-        plot_together(
-            pred, keys=["mplex_img", "marker_activity_mask", "prediction"],
-            save_dir=os.path.join(params["eval_dir"], "worst_predictions"),
-            save_file="worst_{}_{}_{}.png".format(i, pred["dataset"], pred["folder_name"])
-        )
+    # split by marker if
+    roc_df = pd.DataFrame(roc)
+    roc_df["marker"] = [pred_["marker"] for pred_ in pred_list]
+    if args.split_by_marker:
+        worst_idx = []
+        best_idx = []
+        markers = np.unique(roc_df.marker)
+        for marker in markers:
+            marker_df = roc_df[roc_df.marker == marker]
+            sort_idx = np.argsort(marker_df.auc).index
+            worst_idx.extend(sort_idx[-args.worst_n:])
+            best_idx.extend(sort_idx[:args.best_n])
+    else:
+        sort_idx = np.argsort(roc["auc"])
+        worst_idx = sort_idx[-args.worst_n:]
+        best_idx = sort_idx[:args.best_n]
+    for idx_list, best_worst in [(best_idx, "best"), (worst_idx, "worst")]:
+        for i, idx in enumerate(idx_list):
+            pred = pred_list[idx]
+            plot_together(
+                pred, keys=["mplex_img", "marker_activity_mask", "prediction"],
+                save_dir=os.path.join(params["eval_dir"], best_worst + "_predictions"),
+                save_file="worst_{}_{}_{}.png".format(
+                    i, pred["marker"] ,pred["dataset"], pred["folder_name"]
+                )
+            )
 
     pd.DataFrame(roc).auc
     tprs, mean_tprs, fpr, std, mean_thresh = average_roc(roc)
@@ -107,5 +137,4 @@ if __name__ == "__main__":
         save_file="heatmap_split_by_marker.png",
         gt_key="activity",
         pred_key="pred_activity",
-
     )
