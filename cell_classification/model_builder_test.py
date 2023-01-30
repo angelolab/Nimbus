@@ -53,6 +53,7 @@ def test_prep_data():
         params["experiment"] = "test"
         params["num_steps"] = 20
         params["num_validation"] = [2, 2]
+        params["num_test"] = [2, 2]
         params["batch_size"] = 2
         trainer = ModelBuilder(params)
         trainer.prep_data()
@@ -60,6 +61,7 @@ def test_prep_data():
         # check if correct number of datasets are loaded
         assert len(trainer.validation_datasets) == 2
         assert len(trainer.train_datasets) == 2
+        assert len(trainer.test_datasets) == 2
 
         # check if train_dataset batches consist of samples from both datasets
         batch_list = []
@@ -72,17 +74,24 @@ def test_prep_data():
         trainer.validation_datasets = [validation_dataset.map(
             trainer.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
         ) for validation_dataset in trainer.validation_datasets]
+        trainer.test_datasets = [test_dataset.map(
+            trainer.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
+        ) for test_dataset in trainer.test_datasets]
         trainer.train_dataset = trainer.train_dataset.map(
             trainer.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
         )
         assert next(iter(trainer.train_dataset))[0].shape[0] == params["batch_size"]
         for validation_dataset in trainer.validation_datasets:
             assert next(iter(validation_dataset))[0].shape[0] == params["batch_size"]
+        for test_dataset in trainer.test_datasets:
+            assert next(iter(test_dataset))[0].shape[0] == params["batch_size"]
 
         # check if samples only contains two files (inputs, targets)
         assert len(next(iter(trainer.train_dataset))) == 2
         for validation_dataset in trainer.validation_datasets:
             assert len(next(iter(validation_dataset))) == 2
+        for test_dataset in trainer.test_datasets:
+            assert len(next(iter(test_dataset))) == 2
 
         # check if in eval mode validation samples contain all original example keys
         trainer.params["eval"] = True
@@ -140,11 +149,14 @@ def test_train_step():
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
         params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = tf_record_path
+        params["record_path"] = [tf_record_path]
         params["path"] = temp_dir
         params["experiment"] = "test"
+        params["dataset_names"] = ["test1"]
         params["num_steps"] = 20
-        params["num_validation"] = 2
+        params["dataset_sample_probs"] = [1.0]
+        params["num_validation"] = [2]
+        params["num_test"] = [2]
         params["batch_size"] = 2
         params["test"] = True
         params["weight_decay"] = 1e-4
@@ -171,11 +183,14 @@ def test_train():
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
         params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = tf_record_path
+        params["record_path"] = [tf_record_path]
         params["path"] = temp_dir
         params["experiment"] = "test"
+        params["dataset_names"] = ["test1"]
         params["num_steps"] = 20
-        params["num_validation"] = 2
+        params["dataset_sample_probs"] = [1.0]
+        params["num_validation"] = [2]
+        params["num_test"] = [2]
         params["batch_size"] = 2
         params["test"] = True
         params["weight_decay"] = 1e-4
@@ -204,11 +219,14 @@ def test_tensorboard_callbacks():
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
         params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = tf_record_path
+        params["record_path"] = [tf_record_path]
         params["path"] = temp_dir
         params["experiment"] = "test"
+        params["dataset_names"] = ["test1"]
         params["num_steps"] = 6
-        params["num_validation"] = 2
+        params["dataset_sample_probs"] = [1.0]
+        params["num_validation"] = [2]
+        params["num_test"] = [2]
         params["batch_size"] = 2
         params["test"] = True
         params["weight_decay"] = 1e-4
@@ -234,11 +252,14 @@ def test_predict():
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
         params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = tf_record_path
+        params["record_path"] = [tf_record_path]
         params["path"] = temp_dir
         params["experiment"] = "test"
+        params["dataset_names"] = ["test1"]
         params["num_steps"] = 20
-        params["num_validation"] = 2
+        params["dataset_sample_probs"] = [1.0]
+        params["num_validation"] = [2]
+        params["num_test"] = [2]
         params["batch_size"] = 2
         params["test"] = True
         params["snap_steps"] = 5000
@@ -246,7 +267,7 @@ def test_predict():
 
         trainer = ModelBuilder(params)
         trainer.train()
-        val_dset = trainer.validation_dataset.map(
+        val_dset = trainer.validation_datasets[0].map(
             trainer.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
         )
         val_batch = next(iter(val_dset))
@@ -270,21 +291,24 @@ def test_predict_dataset():
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
         params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = tf_record_path
+        params["record_path"] = [tf_record_path]
         params["path"] = temp_dir
         params["experiment"] = "test"
+        params["dataset_names"] = ["test1"]
         params["num_steps"] = 2
-        params["num_validation"] = 2
+        params["dataset_sample_probs"] = [1.0]
+        params["num_validation"] = [2]
+        params["num_test"] = [2]
         params["batch_size"] = 2
         params["snap_steps"] = 5000
         params["val_steps"] = 5000
         trainer = ModelBuilder(params)
         trainer.train()
-        val_dset = trainer.validation_dataset
+        val_dset = trainer.validation_datasets[0]
         single_example_list = trainer.predict_dataset(val_dset)
 
         # check if predict returns a list with the right number of items
-        assert len(single_example_list) == params["num_validation"]
+        assert [len(single_example_list)] == params["num_validation"]
 
         # check if params were saved to file
         assert "params.toml" in os.listdir(params["model_dir"])
@@ -292,7 +316,7 @@ def test_predict_dataset():
         # check if examples get serialized correctly
         single_example_list = trainer.predict_dataset(val_dset, save_predictions=True)
         params = trainer.params
-        for i in range(params["num_validation"]):
+        for i in range(params["num_validation"][0]):
             assert str(i).zfill(4) + "_pred.hdf" in list(os.listdir(params["eval_dir"]))
 
         with h5py.File(os.path.join(params["eval_dir"], str(0).zfill(4) + "_pred.hdf"), "r") as f:
@@ -308,11 +332,14 @@ def test_add_weight_decay():
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
         params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = tf_record_path
+        params["record_path"] = [tf_record_path]
         params["path"] = temp_dir
         params["experiment"] = "test"
+        params["dataset_names"] = ["test1"]
         params["num_steps"] = 20
-        params["num_validation"] = 2
+        params["dataset_sample_probs"] = [1.0]
+        params["num_validation"] = [2]
+        params["num_test"] = [2]
         params["batch_size"] = 2
         params["test"] = True
         params["weight_decay"] = 1e-3
@@ -328,14 +355,14 @@ def test_add_weight_decay():
         trainer.prep_data()
         tf.random.set_seed(42)
         trainer.prep_model()
-        loss_with_weight_decay = trainer.validate(trainer.validation_dataset)
+        loss_with_weight_decay = trainer.validate(trainer.validation_datasets[0])
 
         params["weight_decay"] = False
         trainer_no_decay = ModelBuilder(params)
         trainer_no_decay.prep_data()
         tf.random.set_seed(42)
         trainer_no_decay.prep_model()
-        loss_without_weight_decay = trainer_no_decay.validate(trainer.validation_dataset)
+        loss_without_weight_decay = trainer_no_decay.validate(trainer.validation_datasets[0])
 
         assert loss_with_weight_decay > loss_without_weight_decay
 
@@ -347,11 +374,14 @@ def test_quantile_filter():
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
         params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = tf_record_path
+        params["record_path"] = [tf_record_path]
         params["path"] = temp_dir
         params["experiment"] = "test"
+        params["dataset_names"] = ["test1"]
         params["num_steps"] = 20
-        params["num_validation"] = 0
+        params["dataset_sample_probs"] = [1.0]
+        params["num_validation"] = [0]
+        params["num_test"] = [0]
         params["batch_size"] = 1
         trainer = ModelBuilder(params)
         trainer.prep_data()

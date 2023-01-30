@@ -94,20 +94,23 @@ def test_HDF5Generator():
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
         params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = tf_record_path
+        params["record_path"] = [tf_record_path]
         params["path"] = temp_dir
         params["experiment"] = "test"
+        params["dataset_names"] = ["test1"]
         params["num_steps"] = 2
-        params["num_validation"] = 2
+        params["dataset_sample_probs"] = [1.0]
+        params["num_validation"] = [2]
+        params["num_test"] = [2]
         params["snap_steps"] = 100
         params["val_steps"] = 100
         model = ModelBuilder(params)
         model.train()
-        model.predict_dataset(model.validation_dataset, save_predictions=True)
+        model.predict_dataset(model.validation_datasets[0], save_predictions=True)
         generator = HDF5Loader(model.params['eval_dir'])
 
         # check if generator has the right number of items
-        assert len(generator) == params['num_validation']
+        assert [len(generator)] == params['num_validation']
 
         # check if generator returns the right items
         for sample in generator:

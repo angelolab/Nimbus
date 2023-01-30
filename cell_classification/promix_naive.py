@@ -133,7 +133,8 @@ class PromixNaive(ModelBuilder):
             toml.dump(self.params, f)
         self.summary_writer = tf.summary.create_file_writer(self.params["log_dir"])
         self.step = 0
-        self.val_loss_history = []
+        self.global_val_loss = []
+        self.val_loss_history = {}
         self.train_loss_tmp = []
         # train the model
         while self.step < self.params["num_steps"]:

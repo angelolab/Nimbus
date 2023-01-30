@@ -21,7 +21,7 @@ def prep_object(
         conversion_matrix_path=conversion_matrix_path, imaging_platform=imaging_platform,
         dataset=dataset, tile_size=tile_size, stride=stride, tf_record_path=tf_record_path,
         normalization_dict_path=normalization_dict_path, selected_markers=selected_markers,
-        normalization_quantile=normalization_quantile,
+        normalization_quantile=normalization_quantile, tissue_type=tissue_type,
         segmentation_naming_convention=segmentation_naming_convention
     )
     return data_prep

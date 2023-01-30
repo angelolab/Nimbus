@@ -49,15 +49,24 @@ class ModelBuilder:
 
         # filter out sparse samples
         if "filter_quantile" in self.params.keys():
-            datasets = [self.quantile_filter(dataset) for dataset in datasets]
+            datasets = [
+                self.quantile_filter(dataset, record_path) for dataset, record_path in 
+                zip(datasets, self.params["record_path"])
+            ]
 
         # split into train and validation
         self.validation_datasets = [
             dataset.take(num_validation) for dataset, num_validation in zip(
                 datasets, self.params["num_validation"])
             ]
-        self.train_datasets= [dataset.skip(num_validation) for dataset, num_validation in zip(
-            datasets, self.params["num_validation"])
+        self.test_datasets = [
+            dataset.take(num_test) for dataset, num_test in zip(
+                datasets, self.params["num_test"])
+            ]
+        self.train_datasets= [
+            dataset.skip(num_validation + num_test) for dataset, num_validation, num_test in zip(
+                datasets, self.params["num_validation"], self.params["num_test"]
+            )
         ]
         if "num_training" in self.params.keys() and self.params["num_training"] is not None:
             self.train_datasets = [train_dataset.take(num_training) for train_dataset, num_training
@@ -69,13 +78,16 @@ class ModelBuilder:
             datasets=self.train_datasets, weights=self.params["dataset_sample_probs"]
         )
 
-        # shuffle, batch and augment the training data
+        # shuffle, batch and augment the datasets
         self.train_dataset = self.train_dataset.shuffle(self.params["shuffle_buffer_size"]).batch(
             self.params["batch_size"] * np.max([self.num_gpus, 1])
         )
         self.validation_datasets = [validation_dataset.batch(
             self.params["batch_size"] * np.max([self.num_gpus, 1])
         ) for validation_dataset in self.validation_datasets]
+        self.test_datasets = [test_dataset.batch(
+            self.params["batch_size"] * np.max([self.num_gpus, 1])
+        ) for test_dataset in self.test_datasets]
 
         self.dataset_names = self.params["dataset_names"]
 
@@ -241,7 +253,7 @@ class ModelBuilder:
                 )
                 val_loss = self.model.evaluate(validation_dataset, verbose=1)
                 print("Validation loss:", val_loss)
-                if dataset_name not in self.val_loss_history:
+                if dataset_name not in self.val_loss_history.keys():
                     self.val_loss_history[dataset_name] = []
                 self.val_loss_history[dataset_name].append(val_loss)
                 with self.summary_writer.as_default():
@@ -393,18 +405,20 @@ class ModelBuilder:
             if hasattr(layer, "bias_regularizer") and layer.use_bias:
                 layer.add_loss(lambda layer=layer: tf.keras.regularizers.l2(alpha)(layer.bias))
 
-    def quantile_filter(self, dataset):
+    def quantile_filter(self, dataset, record_path):
         """Filter out training examples that contain less than a certain quantile per marker of
         positive cells
         Args:
             dataset (tf.data.Dataset):
                 Dataset to filter
+            record_path (str):
+                Path to the tfrecord file
         Returns:
             dataset (tf.data.Dataset):
                 Filtered dataset
         """
         print("Filtering out sparse training examples...")
-        self.num_pos_dict_path = self.params["record_path"].split(".tfrecord")[0] + \
+        self.num_pos_dict_path = record_path.split(".tfrecord")[0] + \
             "num_pos_dict.json"
         if os.path.exists(self.num_pos_dict_path):
             with open(self.num_pos_dict_path, "r") as f:

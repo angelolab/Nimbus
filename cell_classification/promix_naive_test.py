@@ -59,11 +59,14 @@ def test_train():
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
         params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = tf_record_path
+        params["record_path"] = [tf_record_path]
         params["path"] = temp_dir
         params["experiment"] = "test"
+        params["dataset_names"] = ["test1"]
+        params["dataset_sample_probs"] = [1.0]
         params["num_steps"] = 7
-        params["num_validation"] = 2
+        params["num_validation"] = [2]
+        params["num_test"] = [2]
         params["batch_size"] = 2
         params["test"] = True
         params["weight_decay"] = 1e-4
@@ -98,16 +101,19 @@ def test_prep_data():
         params["record_path"] = tf_record_path
         params["path"] = temp_dir
         params["experiment"] = "test"
+        params["dataset_names"] = ["test1"]
+        params["dataset_sample_probs"] = [1.0]
         params["num_steps"] = 3
-        params["num_validation"] = 2
+        params["num_validation"] = [2]
+        params["num_test"] = [2]
         params["batch_size"] = 2
         trainer = PromixNaive(params)
         trainer.prep_data()
 
         # check if train and validation datasets exists and are of the right type
-        assert isinstance(trainer.validation_dataset, tf.data.Dataset)
+        assert isinstance(trainer.validation_datasets[0], tf.data.Dataset)
         assert isinstance(trainer.train_dataset, tf.data.Dataset)
-
+test_prep_data()
 
 def prepare_activity_df():
     activity_df_list = []
