@@ -106,7 +106,7 @@ def test_prep_data():
             ]
         )
         # check if in eval mode validation samples from one validation dataset only contain samples
-        # from one dataset 
+        # from one dataset
         batch_list = []
         for batch in trainer.validation_datasets[0]:
             batch_dset = [b.decode() for b in batch['dataset'].numpy()]
@@ -351,16 +351,16 @@ def test_add_weight_decay():
         assert len(trainer.model.losses) > 1
 
         # check if loss is higher with weight decay than without weight decay
+        tf.random.set_seed(42)
         trainer = ModelBuilder(params)
         trainer.prep_data()
-        tf.random.set_seed(42)
         trainer.prep_model()
         loss_with_weight_decay = trainer.validate(trainer.validation_datasets[0])
 
         params["weight_decay"] = False
+        tf.random.set_seed(42)
         trainer_no_decay = ModelBuilder(params)
         trainer_no_decay.prep_data()
-        tf.random.set_seed(42)
         trainer_no_decay.prep_model()
         loss_without_weight_decay = trainer_no_decay.validate(trainer.validation_datasets[0])
 

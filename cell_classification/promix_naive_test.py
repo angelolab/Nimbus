@@ -53,6 +53,7 @@ def test_matched_high_confidence_selection_thresholds():
 
 
 def test_train():
+    os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
     with tempfile.TemporaryDirectory() as temp_dir:
         data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
         data_prep.tf_record_path = temp_dir
@@ -113,7 +114,7 @@ def test_prep_data():
         # check if train and validation datasets exists and are of the right type
         assert isinstance(trainer.validation_datasets[0], tf.data.Dataset)
         assert isinstance(trainer.train_dataset, tf.data.Dataset)
-test_prep_data()
+
 
 def prepare_activity_df():
     activity_df_list = []
@@ -140,13 +141,15 @@ def test_class_wise_loss_selection():
     trainer = PromixNaive(params)
     activity_df_list = prepare_activity_df()
     df = activity_df_list[0]
-    mark = df["marker"][0]
+    marker = df["marker"][0]
+    dataset = df["dataset"][0]
 
-    trainer.class_wise_loss_quantiles[mark] = {"positive": 0.5, "negative": 0.5}
+    dataset_marker = dataset + "_" + marker
+    trainer.class_wise_loss_quantiles[dataset_marker] = {"positive": 0.5, "negative": 0.5}
     df["loss"] = df.activity * df.prediction + (1 - df.activity) * (1 - df.prediction)
     positive_df = df[df["activity"] == 1]
     negative_df = df[df["activity"] == 0]
-    selected_subset = trainer.class_wise_loss_selection(positive_df, negative_df, mark)
+    selected_subset = trainer.class_wise_loss_selection(positive_df, negative_df, marker, dataset)
 
     # check that the output has the right dimension
     assert len(selected_subset) == 2
@@ -156,18 +159,18 @@ def test_class_wise_loss_selection():
     # smaller than the threshold
     assert selected_subset[0].equals(
         df[df["activity"] == 1].loc[
-            df["loss"] <= trainer.class_wise_loss_quantiles[mark]["positive"]
+            df["loss"] <= trainer.class_wise_loss_quantiles[dataset_marker]["positive"]
         ]
     )
     assert selected_subset[1].equals(
         df[df["activity"] == 0].loc[
-            df["loss"] <= trainer.class_wise_loss_quantiles[mark]["negative"]
+            df["loss"] <= trainer.class_wise_loss_quantiles[dataset_marker]["negative"]
         ]
     )
 
     # check if quantiles got updated
-    assert trainer.class_wise_loss_quantiles[mark]["positive"] != 0.5
-    assert trainer.class_wise_loss_quantiles[mark]["negative"] != 0.5
+    assert trainer.class_wise_loss_quantiles[dataset_marker]["positive"] != 0.5
+    assert trainer.class_wise_loss_quantiles[dataset_marker]["negative"] != 0.5
 
 
 def test_matched_high_confidence_selection():
@@ -207,11 +210,13 @@ def test_batchwise_loss_selection():
             i += 1
     dfs = activity_df_list[:2]
     mark = [tf.constant(str(df["marker"][0]).encode()) for df in dfs]
+    dset = [tf.constant(str(df["dataset"][0]).encode()) for df in dfs]
+
     for df in dfs:
         df["loss"] = df.activity * df.prediction + (1 - df.activity) * (1 - df.prediction)
     instance_mask = instance_mask[np.newaxis, ..., np.newaxis]
     instance_mask = np.concatenate([instance_mask, instance_mask], axis=0)
-    loss_mask = trainer.batchwise_loss_selection(dfs, instance_mask, mark)
+    loss_mask = trainer.batchwise_loss_selection(dfs, instance_mask, mark, dset)
 
     # check that the output has the right dimension
     assert list(loss_mask.shape) == [2, 256, 256]

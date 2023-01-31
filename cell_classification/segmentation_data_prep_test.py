@@ -28,9 +28,9 @@ def prep_object(
 
 
 def prep_object_and_inputs(
-    temp_dir, imaging_platform="imaging_platform", dataset="dataset", selected_markers=["CD4"],
-    num_folders=5, scale=[0.5, 1.0, 1.5, 2.0, 5.0],
-    ):
+        temp_dir, imaging_platform="imaging_platform", dataset="dataset", selected_markers=["CD4"],
+        num_folders=5, scale=[0.5, 1.0, 1.5, 2.0, 5.0],
+):
     # create temporary folders with data for the tests
     conversion_matrix = prepare_conversion_matrix()
     conversion_matrix_path = os.path.join(temp_dir, "conversion_matrix.csv")
