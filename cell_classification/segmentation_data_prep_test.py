@@ -358,7 +358,7 @@ def test_get_composite_image():
         # load the images and check against the composite image
         nuclei_img_loaded = []
         for chan in data_prep.nuclei_channels:
-            img = imread(os.path.join(data_folders[0], chan + ".tiff"))
+            img = imread(os.path.join(data_folders[0], chan + ".tiff")).astype(np.float32)
             img /= data_prep.normalization_dict[chan]
             img = img.clip(0, 1)
             nuclei_img_loaded.append(img)
@@ -367,7 +367,7 @@ def test_get_composite_image():
 
         membrane_img_loaded = []
         for chan in data_prep.membrane_channels:
-            img = imread(os.path.join(data_folders[0], chan + ".tiff"))
+            img = imread(os.path.join(data_folders[0], chan + ".tiff")).astype(np.float32)
             img /= data_prep.normalization_dict[chan]
             img = img.clip(0, 1)
             membrane_img_loaded.append(img)
@@ -378,7 +378,9 @@ def test_get_composite_image():
 
         # test if the function works for a single channel
         single_channel_img = data_prep.get_composite_image(data_folders[0], channels=["CD4"])
-        single_channel_img_loaded = imread(os.path.join(data_folders[0], "CD4.tiff"))
+        single_channel_img_loaded = imread(
+            os.path.join(data_folders[0], "CD4.tiff")
+        ).astype(np.float32)
         single_channel_img_loaded /= data_prep.normalization_dict["CD4"]
         single_channel_img_loaded = single_channel_img_loaded.clip(0, 1)[..., np.newaxis]
         assert np.array_equal(single_channel_img, single_channel_img_loaded)
