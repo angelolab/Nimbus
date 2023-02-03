@@ -10,6 +10,7 @@ import toml
 from copy import deepcopy
 from joblib import Parallel, delayed
 import pandas as pd
+from promix_naive import PromixNaive
 
 
 def load_model_and_val_data(params):
@@ -24,7 +25,10 @@ def load_model_and_val_data(params):
             validation dataset
     """
     params["eval"] = True
-    model = ModelBuilder(params)
+    if params["model"] == "ModelBuilder":
+        model = ModelBuilder(params)
+    elif params["model"] == "PromixNaive":
+        model = PromixNaive(params)
     model.prep_data()
     model.load_model(params["model_path"])
     val_dset = model.validation_dataset

@@ -1,6 +1,7 @@
 record_path = "C:/Users/lorenz/Desktop/angelo_lab/MIBI_test/TNBC_CD45.tfrecord"
 path = "C:/Users/lorenz/OneDrive/Desktop/angelo_lab/"
 experiment = "test"
+model = "ModelBuilder"
 num_steps = 20
 lr = 1e-3
 backbone = "resnet50"

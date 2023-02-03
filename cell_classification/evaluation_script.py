@@ -41,6 +41,12 @@ if __name__ == "__main__":
         help="Split best/worst predictions by marker",
         default=True,
     )
+    parser.add_argument(
+        "--promix",
+        type=bool,
+        help="Load promix model",
+        default=False,
+    )
     args = parser.parse_args()
     with open(args.params_path, "r") as f:
         params = toml.load(f)
