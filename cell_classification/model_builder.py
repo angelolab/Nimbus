@@ -36,12 +36,13 @@ class ModelBuilder:
         """Prepares training and validation data"""
         # make datasets and splits
         datasets = [
-            tf.data.TFRecordDataset(record_path) for record_path in  self.params["record_path"]
+            tf.data.TFRecordDataset(record_path) for record_path in self.params["record_path"]
         ]
         datasets = [
-            dataset.map(lambda x: tf.io.parse_single_example(x, feature_description),
-            num_parallel_calls=tf.data.AUTOTUNE,
-        ) for dataset in datasets
+            dataset.map(
+                lambda x: tf.io.parse_single_example(x, feature_description),
+                num_parallel_calls=tf.data.AUTOTUNE,
+            ) for dataset in datasets
         ]
         datasets = [
             dataset.map(parse_dict, num_parallel_calls=tf.data.AUTOTUNE) for dataset in datasets
@@ -50,29 +51,51 @@ class ModelBuilder:
         # filter out sparse samples
         if "filter_quantile" in self.params.keys():
             datasets = [
-                self.quantile_filter(dataset, record_path) for dataset, record_path in 
+                self.quantile_filter(dataset, record_path) for dataset, record_path in
                 zip(datasets, self.params["record_path"])
             ]
 
-        # split into train and validation
+        # split into train, validation and test
         self.validation_datasets = [
             dataset.take(num_validation) for dataset, num_validation in zip(
                 datasets, self.params["num_validation"])
             ]
+        datasets = [dataset.skip(num_validation) for dataset, num_validation in zip(
+            datasets, self.params["num_validation"])
+        ]
         self.test_datasets = [
             dataset.take(num_test) for dataset, num_test in zip(
                 datasets, self.params["num_test"])
             ]
-        self.train_datasets= [
-            dataset.skip(num_validation + num_test) for dataset, num_validation, num_test in zip(
-                datasets, self.params["num_validation"], self.params["num_test"]
-            )
+        self.train_datasets = [
+            dataset.skip(num_test) for dataset, num_test in zip(
+                datasets, self.params["num_test"])
         ]
+        # add external validation datasets
+        if "external_validation_path" in self.params.keys():
+            external_validation_datasets = [
+                tf.data.TFRecordDataset(record_path) for record_path in
+                self.params["external_validation_path"]
+            ]
+            external_validation_datasets = [
+                dataset.map(
+                    lambda x: tf.io.parse_single_example(x, feature_description),
+                    num_parallel_calls=tf.data.AUTOTUNE,
+                ) for dataset in external_validation_datasets
+            ]
+            external_validation_datasets = [
+                dataset.map(parse_dict, num_parallel_calls=tf.data.AUTOTUNE) for dataset in
+                external_validation_datasets
+            ]
+            self.external_validation_datasets = external_validation_datasets
+            self.external_validation_names = self.params["external_validation_names"]
+
         if "num_training" in self.params.keys() and self.params["num_training"] is not None:
-            self.train_datasets = [train_dataset.take(num_training) for train_dataset, num_training
+            self.train_datasets = [
+                train_dataset.take(num_training) for train_dataset, num_training
                 in zip(self.train_datasets, self.params["num_training"])
             ]
-        
+
         # merge datasets with tf.data.Dataset.sample_from_datasets
         self.train_dataset = tf.data.Dataset.sample_from_datasets(
             datasets=self.train_datasets, weights=self.params["dataset_sample_probs"]
@@ -246,8 +269,9 @@ class ModelBuilder:
         # run validation and write to tensorboard
         if self.step % self.params["val_steps"] == 0:
             print("Running validation...")
-            for validation_dataset, dataset_name in zip(self.validation_datasets,
-                self.dataset_names):
+            for validation_dataset, dataset_name in zip(
+                self.validation_datasets, self.dataset_names
+            ):
                 validation_dataset = validation_dataset.map(
                     self.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
                 )
@@ -265,6 +289,26 @@ class ModelBuilder:
             if val_loss <= tf.reduce_min(self.global_val_loss):
                 print("Saving model to", self.params["model_path"])
                 self.model.save_weights(self.params["model_path"])
+            # run external validation
+            if hasattr(self, "external_validation_datasets"):
+                for validation_dataset, dataset_name in zip(
+                    self.external_validation_datasets, self.external_dataset_names
+                ):
+                    validation_dataset = validation_dataset.map(
+                        self.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
+                    )
+                    val_loss = self.model.evaluate(validation_dataset, verbose=1)
+                    print("Validation loss:", val_loss)
+                    if dataset_name not in self.val_loss_history.keys():
+                        self.val_loss_history[dataset_name] = []
+                    self.val_loss_history[dataset_name].append(val_loss)
+                    with self.summary_writer.as_default():
+                        tf.summary.scalar(dataset_name + "_val", val_loss, step=self.step)
+            if "save_model_on_dataset_name" in self.params.keys():
+                current = self.val_loss_history[self.params["save_model_on_dataset_name"]][-1]
+                if current <= self.best_val_loss[self.params["save_model_on_dataset_name"]]:
+                    print("Saving model to", self.params["model_path"])
+                    self.model.save_weights(self.params["model_path"]+"_best.pkl")
 
     def prep_loss(self):
         """Prepares the loss function for the model

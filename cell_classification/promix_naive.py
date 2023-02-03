@@ -169,7 +169,7 @@ class PromixNaive(ModelBuilder):
                 ]
                 #
                 loss_mask = self.batchwise_loss_selection(
-                    batch["activity_df"], batch["instance_mask"], batch["marker"]
+                    batch["activity_df"], batch["instance_mask"], batch["marker"], batch["dataset"]
                 )
                 loss_mask *= tf.cast(tf.squeeze(batch["binary_mask"], -1), tf.float32)
                 # augment batches and do train_step
@@ -235,28 +235,31 @@ class PromixNaive(ModelBuilder):
         mean_per_cell = tf.gather(mean_per_cell, uniques)
         return [uniques, mean_per_cell]
 
-    def batchwise_loss_selection(self, activity_df, instance_mask, marker):
+    def batchwise_loss_selection(self, activity_df, instance_mask, marker, dataset):
         """Selects the cells with the lowest loss for each class and runs
             matched_high_confidence_selection internally
         Args:
             activity_df (pd.DataFrame): dataframe with columns "labels", "activity" and "loss"
             instance_mask (tf.Tensor): instance_masks
+            marker list(tf.Tensor): list of markers
+            dataset list(tf.Tensor): dataset name
         Returns:
             tf.Tensor: loss_mask that has ones for every pixel that is selected for loss
             calculation and zeros for the background and all not selected cells
         """
         loss_selection = []
-        for df, mask, mark in zip(activity_df, instance_mask, marker):
+        for df, mask, mark, dset in zip(activity_df, instance_mask, marker, dataset):
             if df.shape[0] == 0:
                 loss_selection.append(tf.squeeze(tf.zeros_like(mask, tf.float32)))
                 continue
             mark = tf.get_static_value(mark).decode()
+            dset = tf.get_static_value(dset).decode()
 
             positive_df = df[df["activity"] == 1]
             negative_df = df[df["activity"] == 0]
             selected_subset = []
             # loss selection methods
-            selected_subset += self.class_wise_loss_selection(positive_df, negative_df, mark)
+            selected_subset += self.class_wise_loss_selection(positive_df, negative_df, mark, dset)
             selected_subset += self.matched_high_confidence_selection(positive_df, negative_df)
             if selected_subset:
                 selected_subset = pd.concat(selected_subset)
@@ -268,40 +271,44 @@ class PromixNaive(ModelBuilder):
             loss_selection.append(tf.cast(positive_mask, tf.float32))
         return tf.stack(loss_selection)
 
-    def class_wise_loss_selection(self, positive_df, negative_df, mark):
+    def class_wise_loss_selection(self, positive_df, negative_df, marker, dataset):
         """Selects the cells with the lowest loss for each class
         Args:
             positive_df (pd.DataFrame): dataframe with columns "labels", "activity" and "loss"
             negative_df (pd.DataFrame): dataframe with columns "labels", "activity" and "loss"
-            mark (str): marker name
+            marker (str): marker name
+            dataset (str): dataset name
         Returns:
             list: list of pd.DataFrame that contain the selected cells
         """
         ema = self.params["ema"]
         selected_subset = []
+        dataset_marker = dataset + "_" + marker
         # get the quantile for gt=0 / gt=1 separately and store cell labels in selected_subset
-        if mark not in self.class_wise_loss_quantiles.keys():
+        if dataset_marker not in self.class_wise_loss_quantiles.keys():
             # add keys to dict if not present and set ema to 1 for initialization
-            self.class_wise_loss_quantiles[mark] = {"positive": 1.0, "negative": 1.0}
+            self.class_wise_loss_quantiles[dataset_marker] = {"positive": 1.0, "negative": 1.0}
             ema = 1.0
         if positive_df.shape[0] > 0:
-            self.class_wise_loss_quantiles[mark]["positive"] = (
-                self.class_wise_loss_quantiles[mark]["positive"] * (1 - ema)
+            self.class_wise_loss_quantiles[dataset_marker]["positive"] = (
+                self.class_wise_loss_quantiles[dataset_marker]["positive"] * (1 - ema)
                 + np.quantile(positive_df.loss, self.quantile) * ema
             )
             selected_subset.append(
                 positive_df[
-                    positive_df["loss"] <= self.class_wise_loss_quantiles[mark]["positive"]
+                    positive_df["loss"] <=
+                    self.class_wise_loss_quantiles[dataset_marker]["positive"]
                 ]
             )
         if negative_df.shape[0] > 0:
-            self.class_wise_loss_quantiles[mark]["negative"] = (
-                self.class_wise_loss_quantiles[mark]["negative"] * (1 - ema)
+            self.class_wise_loss_quantiles[dataset_marker]["negative"] = (
+                self.class_wise_loss_quantiles[dataset_marker]["negative"] * (1 - ema)
                 + np.quantile(negative_df.loss, self.quantile) * ema
             )
             selected_subset.append(
                 negative_df[
-                    negative_df["loss"] <= self.class_wise_loss_quantiles[mark]["negative"]
+                    negative_df["loss"] <=
+                    self.class_wise_loss_quantiles[dataset_marker]["negative"]
                 ]
             )
         return selected_subset

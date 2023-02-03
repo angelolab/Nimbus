@@ -13,7 +13,7 @@ import pandas as pd
 from promix_naive import PromixNaive
 
 
-def load_model_and_val_data(params):
+def load_model(params):
     """Load model and validation data from params dict
     Args:
         params (dict):
@@ -31,8 +31,7 @@ def load_model_and_val_data(params):
         model = PromixNaive(params)
     model.prep_data()
     model.load_model(params["model_path"])
-    val_dset = model.validation_dataset
-    return model, val_dset
+    return model
 
 
 def calc_roc(pred_list, gt_key="marker_activity_mask", pred_key="prediction", cell_level=False):
