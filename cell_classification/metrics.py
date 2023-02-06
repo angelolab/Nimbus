@@ -47,9 +47,11 @@ def calc_roc(pred_list, gt_key="marker_activity_mask", pred_key="prediction", ce
         roc (dict):
             dictionary containing ROC curve data
     """
-    roc = {"fpr": [], "tpr": [], "thresholds": [], "auc": []}
+    roc = {"fpr": [], "tpr": [], "thresholds": [], "auc": [], "marker": []}
     for sample in pred_list:
         if cell_level:
+            # filter out cells with gt activity == 2
+            df = df[df[gt_key] != 2]
             df = sample["activity_df"]
             gt = df[gt_key].to_numpy()
             pred = df[pred_key].to_numpy()
@@ -63,6 +65,7 @@ def calc_roc(pred_list, gt_key="marker_activity_mask", pred_key="prediction", ce
             roc["tpr"].append(tpr)
             roc["thresholds"].append(thresholds)
             roc["auc"].append(auc(fpr, tpr))
+            roc["marker"].append(sample["marker"])
     return roc
 
 
@@ -123,6 +126,8 @@ def calc_metrics(
         for sample in pred_list:
             if cell_level:
                 df = sample["activity_df"]
+                # filter out cells with gt activity == 2
+                df = df[df[gt_key] != 2]
                 gt = np.array(df[gt_key])
                 pred = np.array(df[pred_key])
             else:

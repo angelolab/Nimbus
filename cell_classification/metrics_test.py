@@ -46,7 +46,7 @@ def test_calc_roc():
     roc = calc_roc(pred_list)
 
     # check if roc has the right keys
-    assert set(roc.keys()) == set(["fpr", "tpr", "auc", "thresholds"])
+    assert set(roc.keys()) == set(["fpr", "tpr", "auc", "thresholds", "marker"])
 
     # check if roc has the right number of items
     assert len(roc["fpr"]) == len(roc["tpr"]) == len(roc["thresholds"]) == len(roc["auc"]) == 9

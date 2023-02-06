@@ -30,6 +30,7 @@ class ModelBuilder:
             params (dict): Dictionary of parameters from the config file
         """
         self.params = params
+        self.params["model"] = "ModelBuilder"
         self.num_gpus = count_gpus()
 
     def prep_data(self):

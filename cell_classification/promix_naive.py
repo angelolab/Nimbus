@@ -19,6 +19,7 @@ class PromixNaive(ModelBuilder):
     def __init__(self, params):
         super().__init__(params)
         self.params = params
+        self.params["model"] = "PromixNaive"
         self.num_gpus = count_gpus()
         self.loss_fn = self.prep_loss()
         self.quantile = self.params["quantile"]
