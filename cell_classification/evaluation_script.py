@@ -4,7 +4,7 @@ import os
 import pickle
 import pandas as pd
 import numpy as np
-from metrics import load_model_and_val_data, calc_roc, average_roc, calc_metrics
+from metrics import load_model, calc_roc, average_roc, calc_metrics
 from plot_utils import plot_average_roc, plot_metrics_against_threshold, subset_plots
 from plot_utils import heatmap_plot, plot_together
 
@@ -41,14 +41,21 @@ if __name__ == "__main__":
         help="Split best/worst predictions by marker",
         default=True,
     )
+    parser.add_argument(
+        "--external_dataset_paths",
+        type=list,
+        help="Paths to external datasets to evaluate on",
+        default=True,
+    )
     args = parser.parse_args()
     with open(args.params_path, "r") as f:
         params = toml.load(f)
     if args.model_path is not None:
         params["model_path"] = args.model_path
-    model, val_dset = load_model_and_val_data(params)
+    model = load_model(params)
     params["eval_dir"] = os.path.join(*os.path.split(params["model_path"])[:-1], "eval")
     os.makedirs(params["eval_dir"], exist_ok=True)
+    # iterate over datasets 
     pred_list = model.predict_dataset(val_dset, False)
 
     # prepare cell_table
