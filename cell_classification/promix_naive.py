@@ -29,6 +29,14 @@ class PromixNaive(ModelBuilder):
         self.class_wise_loss_quantiles = {}
         self.aug_fn = prepare_keras_aug(params, dtype=(tf.float32, tf.uint8))
         self.mixup_fn = MixUp(prob=params["mixup_prob"], alpha=params["mixup_alpha"])
+        if "batch_constituents" in list(self.params.keys()):
+            self.prep_batches_promix = self.gen_prep_batches_promix_fn(
+                self.params["batch_constituents"]
+            )
+        else:
+            self.prep_batches_promix = self.gen_prep_batches_promix_fn()
+        # make prep_batches_promix a callable static method
+        self.prep_batches_promix = staticmethod(self.prep_batches_promix).__func__
 
     def quantile_scheduler(self, step):
         """Linear scheduler for quantile
@@ -41,24 +49,36 @@ class PromixNaive(ModelBuilder):
                     / self.quantile_warmup_steps
                 ), self.quantile_end])
 
-    @staticmethod
-    def prep_batches_promix(batch):
-        """Preprocess batches for training
+    def gen_prep_batches_promix_fn(self, keys=["mplex_img", "binary_mask"]):
+        """Generates a function that preprocesses batches for training. This function needs to
+        coexist with ModelBuilder.gen_prep_batches_fn and does not replace it.
         Args:
-            batch (dict):
-                Dictionary of tensors and strings containing data from a single batch
+            keys (list): List of keys to concatenate into a single batch
         Returns:
-            mplex_img (tf.Tensor):
-                Batch of mplex images
-            binary_mask (tf.Tensor)
-                Batch of binary mask images
-            targets (tf.Tensor):
-                Batch of labels
+            prep_batches (function): Function that preprocesses batches for training
         """
-        targets = batch["marker_activity_mask"]
-        mplex_img = batch["mplex_img"]
-        binary_mask = tf.cast(batch["binary_mask"], tf.float32)
-        return mplex_img, binary_mask, targets
+        # remove binary_mask from keys, because it'll be loaded anyways
+        keys = [key for key in keys if key != "binary_mask"]
+
+        def prep_batches_promix(batch):
+            """Preprocess batches for training
+            Args:
+                batch (dict):
+                    Dictionary of tensors and strings containing data from a single batch
+            Returns:
+                mplex_img (tf.Tensor):
+                    Batch of mplex images
+                binary_mask (tf.Tensor)
+                    Batch of binary mask images
+                targets (tf.Tensor):
+                    Batch of labels
+            """
+            targets = batch["marker_activity_mask"]
+            mplex_img = tf.concat([batch[key] for key in keys], axis=-1)
+            binary_mask = tf.cast(batch["binary_mask"], tf.float32)
+            return mplex_img, binary_mask, targets
+
+        return prep_batches_promix
 
     def matched_high_confidence_selection_thresholds(self):
         """Returns a dictionary with the thresholds for the high confidence selection"""
