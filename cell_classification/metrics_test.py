@@ -17,7 +17,7 @@ def make_pred_list():
         activity_df = pd.DataFrame(
             {
                 "labels": np.array([1, 2, 5, 7, 9, 11], dtype=np.uint16),
-                "activity": [1, 0, 0, 0, 0, 1],
+                "activity": [1, 0, 0, 2, 0, 1],
                 "cell_type": ["T cell", "B cell", "T cell", "B cell", "T cell", "B cell"],
                 "sample": [str(i)]*6,
                 "imaging_platform": ["test"]*6,

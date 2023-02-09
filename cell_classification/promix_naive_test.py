@@ -242,3 +242,42 @@ def test_quantile_scheduler():
     assert step_half_warmpup_quantile == (quantile_start + quantile_end) / 2
     assert step_warump_quantile == quantile_end
     assert step_n_quantile == quantile_end
+
+
+def test_gen_prep_batches_promix_fn():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
+        data_prep.tf_record_path = temp_dir
+        data_prep.make_tf_record()
+        tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
+        params = toml.load("cell_classification/configs/params.toml")
+        params["record_path"] = [tf_record_path]
+        params["path"] = temp_dir
+        params["batch_constituents"] = ["mplex_img", "binary_mask", "nuclei_img", "membrane_img"]
+        params["experiment"] = "test"
+        params["dataset_names"] = ["test1"]
+        params["num_steps"] = 20
+        params["dataset_sample_probs"] = [1.0]
+        params["batch_size"] = 1
+        params["test"] = True
+        params["num_validation"] = [2]
+        params["num_test"] = [2]
+        trainer = PromixNaive(params)
+        trainer.prep_data()
+        example = next(iter(trainer.train_dataset))
+        prep_batches_promix_4 = trainer.prep_batches_promix
+        prep_batches_promix_2 = trainer.gen_prep_batches_promix_fn(
+            keys=["mplex_img", "binary_mask"]
+        )
+
+        # check if each batch contains the above specified constituents
+        batch_2 = prep_batches_promix_2(example)
+        assert batch_2[0].shape[-1] == 1
+        assert np.array_equal(batch_2[0], example["mplex_img"])
+
+        batch_4 = prep_batches_promix_4(example)
+        assert batch_4[0].shape[-1] == 3
+        assert np.array_equal(batch_4[0], tf.concat([
+            example["mplex_img"], example["nuclei_img"], example["membrane_img"]
+            ], axis=-1)
+        )
