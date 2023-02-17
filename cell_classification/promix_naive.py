@@ -347,5 +347,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     params = toml.load(args.params)
     trainer = PromixNaive(params)
-    trainer.load_model("ex_3_fulldata/ex_3_fulldata.h5")
+    if "load_model" in params.keys() and params["load_model"]:
+        trainer.load_model(params["load_model"])
     trainer.train()
