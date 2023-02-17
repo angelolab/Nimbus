@@ -413,3 +413,44 @@ def test_quantile_filter():
             num_pos_dict = json.load(f)
 
         assert np.array_equal(sorted(num_pos_dict["CD4"]), sorted(unfiltered_num_cells))
+
+
+def test_gen_prep_batches_fn():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
+        data_prep.tf_record_path = temp_dir
+        data_prep.make_tf_record()
+        tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
+        params = toml.load("cell_classification/configs/params.toml")
+        params["record_path"] = [tf_record_path]
+        params["path"] = temp_dir
+        params["batch_constituents"] = ["mplex_img", "binary_mask", "nuclei_img", "membrane_img"]
+        params["experiment"] = "test"
+        params["dataset_names"] = ["test1"]
+        params["num_steps"] = 20
+        params["dataset_sample_probs"] = [1.0]
+        params["batch_size"] = 1
+        params["test"] = True
+        params["num_validation"] = [2]
+        params["num_test"] = [2]
+        trainer = ModelBuilder(params)
+        trainer.prep_data()
+        example = next(iter(trainer.train_dataset))
+        prep_batches_4 = trainer.prep_batches
+        prep_batches_2 = trainer.gen_prep_batches_fn(keys=["mplex_img", "binary_mask"])
+
+        # check if each batch contains the above specified constituents
+        batch_2 = prep_batches_2(example)
+        assert batch_2[0].shape[-1] == 2
+        assert np.array_equal(batch_2[0], tf.concat([
+            example["mplex_img"], tf.cast(example["binary_mask"], tf.float32)
+            ], axis=-1)
+        )
+
+        batch_4 = prep_batches_4(example)
+        assert batch_4[0].shape[-1] == 4
+        assert np.array_equal(batch_4[0], tf.concat([
+            example["mplex_img"], tf.cast(example["binary_mask"], tf.float32),
+            example["nuclei_img"], example["membrane_img"]
+            ], axis=-1)
+        )

@@ -32,6 +32,12 @@ class ModelBuilder:
         self.params = params
         self.params["model"] = "ModelBuilder"
         self.num_gpus = count_gpus()
+        if "batch_constituents" in list(self.params.keys()):
+            self.prep_batches = self.gen_prep_batches_fn(self.params["batch_constituents"])
+        else:
+            self.prep_batches = self.gen_prep_batches_fn()
+        # make prep_batches a callable static method
+        self.prep_batches = staticmethod(self.prep_batches).__func__
 
     def prep_data(self):
         """Prepares training and validation data"""
@@ -325,23 +331,32 @@ class ModelBuilder:
         )
         return loss_fn
 
-    @staticmethod
-    def prep_batches(batch):
-        """Preprocess batches for training
+    def gen_prep_batches_fn(self, keys=["mplex_img", "binary_mask"]):
+        """Generates a function that preprocesses batches for training
         Args:
-            batch (dict):
-                Dictionary of tensors and strings containing data from a single batch
+            keys (list): List of keys to concatenate into a single batch
         Returns:
-            inputs (tf.Tensor):
-                Batch of images
-            targets (tf.Tensor):
-                Batch of labels
+            prep_batches (function): Function that preprocesses batches for training
         """
-        inputs = tf.concat(
-            [batch["mplex_img"], tf.cast(batch["binary_mask"], tf.float32)], axis=-1
-        )
-        targets = batch["marker_activity_mask"]
-        return inputs, targets
+
+        def prep_batches(batch):
+            """Preprocess batches for training
+            Args:
+                batch (dict):
+                    Dictionary of tensors and strings containing data from a single batch
+            Returns:
+                inputs (tf.Tensor):
+                    Batch of images
+                targets (tf.Tensor):
+                    Batch of labels
+            """
+            inputs = tf.concat(
+                [tf.cast(batch[key], tf.float32) for key in keys], axis=-1
+            )
+            targets = batch["marker_activity_mask"]
+            return inputs, targets
+
+        return prep_batches
 
     def predict(self, image):
         """Runs inference on a single image or a batch of images
@@ -490,6 +505,14 @@ class ModelBuilder:
         def predicate(marker, activity_df):
             """Helper function that returns true if the number of positive cells is above the
             quantile threshold
+            Args:
+                marker (tf.Tensor):
+                    Marker name of the example
+                activity_df (tf.Tensor):
+                    Activity dataframe of the example
+            Returns:
+                tf.Tensor:
+                    True if the number of positive cells is above the quantile threshold
             """
             marker = tf.get_static_value(marker).decode("utf-8")
             activity_df = pd.read_json(tf.get_static_value(activity_df).decode("utf-8"))
