@@ -167,7 +167,7 @@ class SegmentationTFRecords:
         composite = []
         if channels:
             for channel in channels:
-                img = self.get_image(data_folder, channel)
+                img = self.get_image(data_folder, channel).astype(np.float32)
                 img /= self.normalization_dict[channel]
                 img = img.clip(0, 1)
                 composite.append(img)

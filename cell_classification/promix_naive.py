@@ -19,6 +19,7 @@ class PromixNaive(ModelBuilder):
     def __init__(self, params):
         super().__init__(params)
         self.params = params
+        self.params["model"] = "PromixNaive"
         self.num_gpus = count_gpus()
         self.loss_fn = self.prep_loss()
         self.quantile = self.params["quantile"]
@@ -28,6 +29,14 @@ class PromixNaive(ModelBuilder):
         self.class_wise_loss_quantiles = {}
         self.aug_fn = prepare_keras_aug(params, dtype=(tf.float32, tf.uint8))
         self.mixup_fn = MixUp(prob=params["mixup_prob"], alpha=params["mixup_alpha"])
+        if "batch_constituents" in list(self.params.keys()):
+            self.prep_batches_promix = self.gen_prep_batches_promix_fn(
+                self.params["batch_constituents"]
+            )
+        else:
+            self.prep_batches_promix = self.gen_prep_batches_promix_fn()
+        # make prep_batches_promix a callable static method
+        self.prep_batches_promix = staticmethod(self.prep_batches_promix).__func__
 
     def quantile_scheduler(self, step):
         """Linear scheduler for quantile
@@ -40,24 +49,36 @@ class PromixNaive(ModelBuilder):
                     / self.quantile_warmup_steps
                 ), self.quantile_end])
 
-    @staticmethod
-    def prep_batches_promix(batch):
-        """Preprocess batches for training
+    def gen_prep_batches_promix_fn(self, keys=["mplex_img", "binary_mask"]):
+        """Generates a function that preprocesses batches for training. This function needs to
+        coexist with ModelBuilder.gen_prep_batches_fn and does not replace it.
         Args:
-            batch (dict):
-                Dictionary of tensors and strings containing data from a single batch
+            keys (list): List of keys to concatenate into a single batch
         Returns:
-            mplex_img (tf.Tensor):
-                Batch of mplex images
-            binary_mask (tf.Tensor)
-                Batch of binary mask images
-            targets (tf.Tensor):
-                Batch of labels
+            prep_batches (function): Function that preprocesses batches for training
         """
-        targets = batch["marker_activity_mask"]
-        mplex_img = batch["mplex_img"]
-        binary_mask = tf.cast(batch["binary_mask"], tf.float32)
-        return mplex_img, binary_mask, targets
+        # remove binary_mask from keys, because it'll be loaded anyways
+        keys = [key for key in keys if key != "binary_mask"]
+
+        def prep_batches_promix(batch):
+            """Preprocess batches for training
+            Args:
+                batch (dict):
+                    Dictionary of tensors and strings containing data from a single batch
+            Returns:
+                mplex_img (tf.Tensor):
+                    Batch of mplex images
+                binary_mask (tf.Tensor)
+                    Batch of binary mask images
+                targets (tf.Tensor):
+                    Batch of labels
+            """
+            targets = batch["marker_activity_mask"]
+            mplex_img = tf.concat([batch[key] for key in keys], axis=-1)
+            binary_mask = tf.cast(batch["binary_mask"], tf.float32)
+            return mplex_img, binary_mask, targets
+
+        return prep_batches_promix
 
     def matched_high_confidence_selection_thresholds(self):
         """Returns a dictionary with the thresholds for the high confidence selection"""
@@ -133,7 +154,8 @@ class PromixNaive(ModelBuilder):
             toml.dump(self.params, f)
         self.summary_writer = tf.summary.create_file_writer(self.params["log_dir"])
         self.step = 0
-        self.val_loss_history = []
+        self.global_val_loss = []
+        self.val_loss_history = {}
         self.train_loss_tmp = []
         # train the model
         while self.step < self.params["num_steps"]:
@@ -168,7 +190,7 @@ class PromixNaive(ModelBuilder):
                 ]
                 #
                 loss_mask = self.batchwise_loss_selection(
-                    batch["activity_df"], batch["instance_mask"], batch["marker"]
+                    batch["activity_df"], batch["instance_mask"], batch["marker"], batch["dataset"]
                 )
                 loss_mask *= tf.cast(tf.squeeze(batch["binary_mask"], -1), tf.float32)
                 # augment batches and do train_step
@@ -234,28 +256,31 @@ class PromixNaive(ModelBuilder):
         mean_per_cell = tf.gather(mean_per_cell, uniques)
         return [uniques, mean_per_cell]
 
-    def batchwise_loss_selection(self, activity_df, instance_mask, marker):
+    def batchwise_loss_selection(self, activity_df, instance_mask, marker, dataset):
         """Selects the cells with the lowest loss for each class and runs
             matched_high_confidence_selection internally
         Args:
             activity_df (pd.DataFrame): dataframe with columns "labels", "activity" and "loss"
             instance_mask (tf.Tensor): instance_masks
+            marker list(tf.Tensor): list of markers
+            dataset list(tf.Tensor): dataset name
         Returns:
             tf.Tensor: loss_mask that has ones for every pixel that is selected for loss
             calculation and zeros for the background and all not selected cells
         """
         loss_selection = []
-        for df, mask, mark in zip(activity_df, instance_mask, marker):
+        for df, mask, mark, dset in zip(activity_df, instance_mask, marker, dataset):
             if df.shape[0] == 0:
                 loss_selection.append(tf.squeeze(tf.zeros_like(mask, tf.float32)))
                 continue
             mark = tf.get_static_value(mark).decode()
+            dset = tf.get_static_value(dset).decode()
 
             positive_df = df[df["activity"] == 1]
             negative_df = df[df["activity"] == 0]
             selected_subset = []
             # loss selection methods
-            selected_subset += self.class_wise_loss_selection(positive_df, negative_df, mark)
+            selected_subset += self.class_wise_loss_selection(positive_df, negative_df, mark, dset)
             selected_subset += self.matched_high_confidence_selection(positive_df, negative_df)
             if selected_subset:
                 selected_subset = pd.concat(selected_subset)
@@ -267,40 +292,44 @@ class PromixNaive(ModelBuilder):
             loss_selection.append(tf.cast(positive_mask, tf.float32))
         return tf.stack(loss_selection)
 
-    def class_wise_loss_selection(self, positive_df, negative_df, mark):
+    def class_wise_loss_selection(self, positive_df, negative_df, marker, dataset):
         """Selects the cells with the lowest loss for each class
         Args:
             positive_df (pd.DataFrame): dataframe with columns "labels", "activity" and "loss"
             negative_df (pd.DataFrame): dataframe with columns "labels", "activity" and "loss"
-            mark (str): marker name
+            marker (str): marker name
+            dataset (str): dataset name
         Returns:
             list: list of pd.DataFrame that contain the selected cells
         """
         ema = self.params["ema"]
         selected_subset = []
+        dataset_marker = dataset + "_" + marker
         # get the quantile for gt=0 / gt=1 separately and store cell labels in selected_subset
-        if mark not in self.class_wise_loss_quantiles.keys():
+        if dataset_marker not in self.class_wise_loss_quantiles.keys():
             # add keys to dict if not present and set ema to 1 for initialization
-            self.class_wise_loss_quantiles[mark] = {"positive": 1.0, "negative": 1.0}
+            self.class_wise_loss_quantiles[dataset_marker] = {"positive": 1.0, "negative": 1.0}
             ema = 1.0
         if positive_df.shape[0] > 0:
-            self.class_wise_loss_quantiles[mark]["positive"] = (
-                self.class_wise_loss_quantiles[mark]["positive"] * (1 - ema)
+            self.class_wise_loss_quantiles[dataset_marker]["positive"] = (
+                self.class_wise_loss_quantiles[dataset_marker]["positive"] * (1 - ema)
                 + np.quantile(positive_df.loss, self.quantile) * ema
             )
             selected_subset.append(
                 positive_df[
-                    positive_df["loss"] <= self.class_wise_loss_quantiles[mark]["positive"]
+                    positive_df["loss"] <=
+                    self.class_wise_loss_quantiles[dataset_marker]["positive"]
                 ]
             )
         if negative_df.shape[0] > 0:
-            self.class_wise_loss_quantiles[mark]["negative"] = (
-                self.class_wise_loss_quantiles[mark]["negative"] * (1 - ema)
+            self.class_wise_loss_quantiles[dataset_marker]["negative"] = (
+                self.class_wise_loss_quantiles[dataset_marker]["negative"] * (1 - ema)
                 + np.quantile(negative_df.loss, self.quantile) * ema
             )
             selected_subset.append(
                 negative_df[
-                    negative_df["loss"] <= self.class_wise_loss_quantiles[mark]["negative"]
+                    negative_df["loss"] <=
+                    self.class_wise_loss_quantiles[dataset_marker]["negative"]
                 ]
             )
         return selected_subset
@@ -338,5 +367,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
     params = toml.load(args.params)
     trainer = PromixNaive(params)
-    trainer.load_model("ex_3_fulldata/ex_3_fulldata.h5")
+    if "load_model" in params.keys() and params["load_model"]:
+        trainer.load_model(params["load_model"])
     trainer.train()

@@ -10,9 +10,10 @@ import toml
 from copy import deepcopy
 from joblib import Parallel, delayed
 import pandas as pd
+from promix_naive import PromixNaive
 
 
-def load_model_and_val_data(params):
+def load_model(params):
     """Load model and validation data from params dict
     Args:
         params (dict):
@@ -24,11 +25,13 @@ def load_model_and_val_data(params):
             validation dataset
     """
     params["eval"] = True
-    model = ModelBuilder(params)
+    if params["model"] == "ModelBuilder":
+        model = ModelBuilder(params)
+    elif params["model"] == "PromixNaive":
+        model = PromixNaive(params)
     model.prep_data()
     model.load_model(params["model_path"])
-    val_dset = model.validation_dataset
-    return model, val_dset
+    return model
 
 
 def calc_roc(pred_list, gt_key="marker_activity_mask", pred_key="prediction", cell_level=False):
@@ -44,10 +47,12 @@ def calc_roc(pred_list, gt_key="marker_activity_mask", pred_key="prediction", ce
         roc (dict):
             dictionary containing ROC curve data
     """
-    roc = {"fpr": [], "tpr": [], "thresholds": [], "auc": []}
+    roc = {"fpr": [], "tpr": [], "thresholds": [], "auc": [], "marker": []}
     for sample in pred_list:
         if cell_level:
-            df = sample["activity_df"]
+            # filter out cells with gt activity == 2
+            df = sample["activity_df"].copy()
+            df = df[df[gt_key] != 2]
             gt = df[gt_key].to_numpy()
             pred = df[pred_key].to_numpy()
         else:
@@ -60,6 +65,7 @@ def calc_roc(pred_list, gt_key="marker_activity_mask", pred_key="prediction", ce
             roc["tpr"].append(tpr)
             roc["thresholds"].append(thresholds)
             roc["auc"].append(auc(fpr, tpr))
+            roc["marker"].append(sample["marker"])
     return roc
 
 
@@ -77,8 +83,8 @@ def calc_scores(gt, pred, threshold):
             dictionary containing scores
     """
     # exclude masked out regions from metric calculation
-    gt = gt[gt < 2]
     pred = pred[gt < 2]
+    gt = gt[gt < 2]
     tn, fp, fn, tp = confusion_matrix(
         y_true=gt, y_pred=(pred >= threshold).astype(int), labels=[0, 1]
     ).ravel()
@@ -120,6 +126,8 @@ def calc_metrics(
         for sample in pred_list:
             if cell_level:
                 df = sample["activity_df"]
+                # filter out cells with gt activity == 2
+                df = df[df[gt_key] != 2]
                 gt = np.array(df[gt_key])
                 pred = np.array(df[pred_key])
             else:

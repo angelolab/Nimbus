@@ -17,7 +17,7 @@ def make_pred_list():
         activity_df = pd.DataFrame(
             {
                 "labels": np.array([1, 2, 5, 7, 9, 11], dtype=np.uint16),
-                "activity": [1, 0, 0, 0, 0, 1],
+                "activity": [1, 0, 0, 2, 0, 1],
                 "cell_type": ["T cell", "B cell", "T cell", "B cell", "T cell", "B cell"],
                 "sample": [str(i)]*6,
                 "imaging_platform": ["test"]*6,
@@ -46,7 +46,7 @@ def test_calc_roc():
     roc = calc_roc(pred_list)
 
     # check if roc has the right keys
-    assert set(roc.keys()) == set(["fpr", "tpr", "auc", "thresholds"])
+    assert set(roc.keys()) == set(["fpr", "tpr", "auc", "thresholds", "marker"])
 
     # check if roc has the right number of items
     assert len(roc["fpr"]) == len(roc["tpr"]) == len(roc["thresholds"]) == len(roc["auc"]) == 9
@@ -94,20 +94,23 @@ def test_HDF5Generator():
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
         params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = tf_record_path
+        params["record_path"] = [tf_record_path]
         params["path"] = temp_dir
         params["experiment"] = "test"
+        params["dataset_names"] = ["test1"]
         params["num_steps"] = 2
-        params["num_validation"] = 2
+        params["dataset_sample_probs"] = [1.0]
+        params["num_validation"] = [2]
+        params["num_test"] = [2]
         params["snap_steps"] = 100
         params["val_steps"] = 100
         model = ModelBuilder(params)
         model.train()
-        model.predict_dataset(model.validation_dataset, save_predictions=True)
+        model.predict_dataset(model.validation_datasets[0], save_predictions=True)
         generator = HDF5Loader(model.params['eval_dir'])
 
         # check if generator has the right number of items
-        assert len(generator) == params['num_validation']
+        assert [len(generator)] == params['num_validation']
 
         # check if generator returns the right items
         for sample in generator:

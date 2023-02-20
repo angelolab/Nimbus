@@ -6,27 +6,30 @@ os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 def naming_convention(fname):
     return os.path.join(
-        "C:/Users/lorenz/Desktop/angelo_lab/data/decidua/segmentation_data/",
+        "E:/angelo_lab/data/decidua/segmentation_data/",
         fname + "_segmentation_labels.tiff",
     )
 
 
 data_prep = SegmentationTFRecords(
-    data_dir=os.path.normpath("C:/Users/lorenz/Desktop/angelo_lab/data/decidua/image_data"),
+    data_dir=os.path.normpath("E:/angelo_lab/data/decidua/image_data"),
     cell_table_path=os.path.normpath(
-        "C:/Users/lorenz/Desktop/angelo_lab/data/decidua/"
+        "E:/angelo_lab/data/decidua/"
         "Supplementary_table_3_single_cells_updated.csv"
     ),
     conversion_matrix_path=os.path.normpath(
-        "C:/Users/lorenz/Desktop/angelo_lab/data/decidua/conversion_matrix.csv"
+        "E:/angelo_lab/data/decidua/conversion_matrix.csv"
     ),
     imaging_platform="MIBI",
     dataset="decidua_erin",
+    tissue_type="decidua",
+    nuclei_channels=["H3"],
+    membrane_channels=["VIM", "HLAG", "CD3", "CD14", "CD56"],
     tile_size=[256, 256],
-    stride=[256, 256],
-    tf_record_path=os.path.normpath("C:/Users/lorenz/Desktop/angelo_lab/data/decidua"),
+    stride=[240, 240],
+    tf_record_path=os.path.normpath("E:/angelo_lab/data/decidua"),
     normalization_dict_path=os.path.normpath(
-        "C:/Users/lorenz/Desktop/angelo_lab/data/decidua/normalization_dict.json"
+        "E:/angelo_lab/data/decidua/normalization_dict.json"
     ),
     selected_markers=[
         "CD45", "CD14", "HLADR", "CD11c", "DCSIGN", "CD68", "CD206", "CD163", "CD3", "Ki67", "IDO",
