@@ -57,7 +57,7 @@ if __name__ == "__main__":
 
     model = load_model(params)
     datasets = {name: dataset for name, dataset in zip(model.dataset_names, model.test_datasets)}
-    if parser.external_datasets:
+    if hasattr(parser, "external_datasets"):
         external_datasets = {
             name: tf.data.TFRecordDataset(path) for name, path in args.external_datasets.items()
         }

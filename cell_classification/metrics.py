@@ -51,8 +51,8 @@ def calc_roc(pred_list, gt_key="marker_activity_mask", pred_key="prediction", ce
     for sample in pred_list:
         if cell_level:
             # filter out cells with gt activity == 2
+            df = sample["activity_df"].copy()
             df = df[df[gt_key] != 2]
-            df = sample["activity_df"]
             gt = df[gt_key].to_numpy()
             pred = df[pred_key].to_numpy()
         else:
