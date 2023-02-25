@@ -454,3 +454,40 @@ def test_gen_prep_batches_fn():
             example["nuclei_img"], example["membrane_img"]
             ], axis=-1)
         )
+
+
+def test_fov_filter():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
+        data_prep.tf_record_path = temp_dir
+        data_prep.make_tf_record()
+        tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
+        params = toml.load("cell_classification/configs/params.toml")
+        params["record_path"] = [tf_record_path]
+        params["path"] = temp_dir
+        params["experiment"] = "test"
+        params["dataset_names"] = ["test1"]
+        params["num_steps"] = 20
+        params["dataset_sample_probs"] = [1.0]
+        params["batch_size"] = 1
+        # prepare data splits json and add to params
+        split = {"train": ["fov_0", "fov_1", "fov_2"], "validation": ["fov_3"], "test": ["fov_4"]}
+        with open(os.path.join(temp_dir, "data_splits.json"), "w") as f:
+            json.dump(split, f)
+        params["data_splits"] = [os.path.join(temp_dir, "data_splits.json")]
+        trainer = ModelBuilder(params)
+        trainer.prep_data()
+
+        # check if we filtered the fovs correctly
+        fovs = {"train": [], "validation": [], "test": []}
+        for example in trainer.train_dataset:
+            fovs["train"].append(example["folder_name"].numpy()[0].decode())
+
+        for example in trainer.validation_datasets[0]:
+            fovs["validation"].append(example["folder_name"].numpy()[0].decode())
+
+        for example in trainer.test_datasets[0]:
+            fovs["test"].append(example["folder_name"].numpy()[0].decode())
+
+        for key in split.keys():
+            assert set(split[key]) == set(fovs[key])

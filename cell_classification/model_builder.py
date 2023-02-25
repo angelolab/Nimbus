@@ -63,21 +63,42 @@ class ModelBuilder:
             ]
 
         # split into train, validation and test
-        self.validation_datasets = [
-            dataset.take(num_validation) for dataset, num_validation in zip(
+        if "data_splits" in self.params.keys():
+            data_splits = []
+            for fpath in self.params["data_splits"]:
+                with open(fpath, "r") as f:
+                    data_splits.append(json.load(f))
+            self.validation_datasets = [
+                self.fov_filter(dataset, data_split["validation"]) for dataset, data_split in zip(
+                    datasets, data_splits
+                )
+            ]
+            self.test_datasets = [
+                self.fov_filter(dataset, data_split["test"]) for dataset, data_split in zip(
+                    datasets, data_splits
+                )
+            ]
+            self.train_datasets = [
+                self.fov_filter(dataset, data_split["train"]) for dataset, data_split in zip(
+                    datasets, data_splits
+                )
+            ]
+        else:
+            self.validation_datasets = [
+                dataset.take(num_validation) for dataset, num_validation in zip(
+                    datasets, self.params["num_validation"])
+                ]
+            datasets = [dataset.skip(num_validation) for dataset, num_validation in zip(
                 datasets, self.params["num_validation"])
             ]
-        datasets = [dataset.skip(num_validation) for dataset, num_validation in zip(
-            datasets, self.params["num_validation"])
-        ]
-        self.test_datasets = [
-            dataset.take(num_test) for dataset, num_test in zip(
-                datasets, self.params["num_test"])
+            self.test_datasets = [
+                dataset.take(num_test) for dataset, num_test in zip(
+                    datasets, self.params["num_test"])
+                ]
+            self.train_datasets = [
+                dataset.skip(num_test) for dataset, num_test in zip(
+                    datasets, self.params["num_test"])
             ]
-        self.train_datasets = [
-            dataset.skip(num_test) for dataset, num_test in zip(
-                datasets, self.params["num_test"])
-        ]
         # add external validation datasets
         if "external_validation_path" in self.params.keys():
             external_validation_datasets = [
@@ -524,6 +545,34 @@ class ModelBuilder:
                 predicate, [example["marker"], example["activity_df"]], tf.bool
             )
         )
+        return dataset
+
+    def fov_filter(self, dataset, fov_list, fov_key="folder_name"):
+        """Filter out training examples that are not in the fov_list and return a copy of the
+        dataset
+        Args:
+            dataset (tf.data.Dataset):
+                Dataset to filter
+            fov_list (list):
+                List of fovs to keep
+            fov_key (str):
+                Key of the fov in the dataset
+        Returns:
+            dataset (tf.data.Dataset):
+                Filtered dataset
+        """
+
+        def predicate(example):
+            """Helper function that returns true if the fov is in fov_list
+            Args:
+                example (dict):
+                    Example dictionary
+            Returns:
+                tf.Tensor:
+                    True if the fov is in fov_list
+            """
+            return tf.reduce_any(tf.equal(example[fov_key], fov_list))
+        dataset = dataset.filter(predicate)
         return dataset
 
 
