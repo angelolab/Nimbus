@@ -3,6 +3,7 @@ import tempfile
 import numpy as np
 import tensorflow as tf
 from segmentation_data_prep_test import prep_object_and_inputs
+from segmentation_data_prep import parse_dict, feature_description
 import os
 import toml
 from model_builder import ModelBuilder
@@ -118,6 +119,36 @@ def test_prep_data():
             batch_dset = [b.decode() for b in batch['dataset'].numpy()]
             batch_list += batch_dset
         assert set(batch_list) == set(["testdata_1"])
+
+        # check if fov_filter works correctly when called inside prep_data
+        params = toml.load("cell_classification/configs/params.toml")
+        params["record_path"] = [tf_record_path]
+        params["path"] = temp_dir
+        params["experiment"] = "test"
+        params["dataset_names"] = ["test1"]
+        params["num_steps"] = 20
+        params["dataset_sample_probs"] = [1.0]
+        params["batch_size"] = 1
+        # prepare data splits json and add to params
+        split = {"train": ["fov_0", "fov_1", "fov_2"], "validation": ["fov_3"], "test": ["fov_4"]}
+        with open(os.path.join(temp_dir, "data_splits.json"), "w") as f:
+            json.dump(split, f)
+        params["data_splits"] = [os.path.join(temp_dir, "data_splits.json")]
+        trainer = ModelBuilder(params)
+        trainer.prep_data()
+        # check if we filtered the fovs correctly
+        fovs = {"train": [], "validation": [], "test": []}
+        for example in trainer.train_dataset:
+            fovs["train"].append(example["folder_name"].numpy()[0].decode())
+
+        for example in trainer.validation_datasets[0]:
+            fovs["validation"].append(example["folder_name"].numpy()[0].decode())
+
+        for example in trainer.test_datasets[0]:
+            fovs["test"].append(example["folder_name"].numpy()[0].decode())
+
+        for key in split.keys():
+            assert set(split[key]) == set(fovs[key])
 
 
 def test_prep_model():
@@ -472,22 +503,13 @@ def test_fov_filter():
         params["batch_size"] = 1
         # prepare data splits json and add to params
         split = {"train": ["fov_0", "fov_1", "fov_2"], "validation": ["fov_3"], "test": ["fov_4"]}
-        with open(os.path.join(temp_dir, "data_splits.json"), "w") as f:
-            json.dump(split, f)
-        params["data_splits"] = [os.path.join(temp_dir, "data_splits.json")]
         trainer = ModelBuilder(params)
-        trainer.prep_data()
-
-        # check if we filtered the fovs correctly
-        fovs = {"train": [], "validation": [], "test": []}
-        for example in trainer.train_dataset:
-            fovs["train"].append(example["folder_name"].numpy()[0].decode())
-
-        for example in trainer.validation_datasets[0]:
-            fovs["validation"].append(example["folder_name"].numpy()[0].decode())
-
-        for example in trainer.test_datasets[0]:
-            fovs["test"].append(example["folder_name"].numpy()[0].decode())
-
-        for key in split.keys():
-            assert set(split[key]) == set(fovs[key])
+        dataset = tf.data.TFRecordDataset(tf_record_path)
+        dataset = dataset.map(lambda x: tf.io.parse_single_example(x, feature_description))
+        dataset = dataset.map(parse_dict)
+        for fov in split.values():
+            fov_list = []
+            dataset_filtered = trainer.fov_filter(dataset, fov)
+            for example in dataset_filtered:
+                fov_list.append(example["folder_name"].numpy().decode())
+            assert set(fov) == set(fov_list)
