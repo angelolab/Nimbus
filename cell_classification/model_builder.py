@@ -126,7 +126,8 @@ class ModelBuilder:
 
         # merge datasets with tf.data.Dataset.sample_from_datasets
         self.train_dataset = tf.data.Dataset.sample_from_datasets(
-            datasets=self.train_datasets, weights=self.params["dataset_sample_probs"]
+            datasets=self.train_datasets, weights=self.params["dataset_sample_probs"],
+            stop_on_empty_dataset=True
         )
 
         # shuffle, batch and augment the datasets

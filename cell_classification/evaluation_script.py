@@ -1,5 +1,6 @@
 import argparse
 import toml
+import ast
 import os
 import pickle
 import pandas as pd
@@ -45,9 +46,10 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--external_datasets",
-        type=dict,
-        help="Maps dataset name to path to tfrecord",
-        default={},
+        type=str,
+        help="List of paths to tfrecord datasets",
+        nargs='+',
+        default=[],
     )
     args = parser.parse_args()
     with open(args.params_path, "r") as f:
@@ -57,9 +59,13 @@ if __name__ == "__main__":
 
     model = load_model(params)
     datasets = {name: dataset for name, dataset in zip(model.dataset_names, model.test_datasets)}
-    if hasattr(parser, "external_datasets"):
+    if hasattr(args, "external_datasets"):
         external_datasets = {
-            name: tf.data.TFRecordDataset(path) for name, path in args.external_datasets.items()
+            os.path.split(external_dataset)[-1].split(".")[0]: external_dataset.replace(",", "")
+                for external_dataset in args.external_datasets
+        }
+        external_datasets = {
+            name: tf.data.TFRecordDataset(path) for name, path in external_datasets.items()
         }
         external_datasets = {
             name: dataset.map(
