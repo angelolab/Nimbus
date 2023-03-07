@@ -62,7 +62,7 @@ if __name__ == "__main__":
     if hasattr(args, "external_datasets"):
         external_datasets = {
             os.path.split(external_dataset)[-1].split(".")[0]: external_dataset.replace(",", "")
-                for external_dataset in args.external_datasets
+            for external_dataset in args.external_datasets
         }
         external_datasets = {
             name: tf.data.TFRecordDataset(path) for name, path in external_datasets.items()
