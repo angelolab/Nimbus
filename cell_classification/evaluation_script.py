@@ -65,7 +65,7 @@ if __name__ == "__main__":
             for external_dataset in args.external_datasets
         }
         external_datasets = {
-            name: tf.data.TFRecordDataset(path) for name, path in external_datasets.items()
+            key: tf.data.TFRecordDataset(external_datasets[key]) for key in external_datasets.keys()
         }
         external_datasets = {
             name: dataset.map(
@@ -78,8 +78,12 @@ if __name__ == "__main__":
                 parse_dict, num_parallel_calls=tf.data.AUTOTUNE
             ) for name, dataset in external_datasets.items()
         }
-        datasets.update(external_datasets)
+        external_datasets = {
+            name: dataset.batch(params["batch_size"], drop_remainder=False
+        ) for name, dataset in external_datasets.items()}
 
+        datasets.update(external_datasets)
+ 
     for name, val_dset in datasets.items():
         params["eval_dir"] = os.path.join(*os.path.split(params["model_path"])[:-1], "eval", name)
         os.makedirs(params["eval_dir"], exist_ok=True)
