@@ -32,9 +32,10 @@ data_prep = SimpleTFRecords(
     segmentation_naming_convention=naming_convention,
     exclude_background_tiles=True,
     img_suffix=".ome.tif",
-    # normalization_dict_path=os.path.normpath(
-    #     "E:/angelo_lab/data/MSKCC_pancreas/normalization_dict.json"
-    # ),
+    gt_suffix="",
+    normalization_dict_path=os.path.normpath(
+        "E:/angelo_lab/data/MSKCC_pancreas/normalization_dict.json"
+    ),
 )
 
 data_prep.make_tf_record()
