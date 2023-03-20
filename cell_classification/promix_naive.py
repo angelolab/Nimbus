@@ -234,6 +234,44 @@ class PromixNaive(ModelBuilder):
                     print("Saving model to", model_fname)
                     self.model.save_weights(model_fname)
 
+    def promix_validation(self, ):
+        for dset_name, validation_dataset in zip(self.dataset_names, self.validation_datasets):
+            for batch in tqdm(validation_dataset):
+                # prepare loss mask with unaugmented batches
+                x_mplex, x_binary, y = self.prep_batches_promix(batch)
+                x = tf.concat([x_mplex, x_binary], axis=-1)
+                y_pred = self.model(x, training=False)
+                loss_img = self.loss_fn(y, y_pred)
+                uniques, loss_per_cell = tf.map_fn(
+                    self.reduce_to_cells,
+                    (loss_img, batch["instance_mask"]),
+                    infer_shape=False,
+                    parallel_iterations=4,
+                    fn_output_signature=[
+                        tf.RaggedTensorSpec(shape=[None], dtype=tf.int32, ragged_rank=0),
+                        tf.RaggedTensorSpec(shape=[None], dtype=tf.float32, ragged_rank=0),
+                    ],
+                )
+                batch["activity_df"] = [
+                    pd.read_json(df.decode()) for df in tf.get_static_value(batch["activity_df"])
+                ]
+                batch["activity_df"] = [
+                    df.merge(
+                        pd.DataFrame({
+                            "labels": tf.get_static_value(uniques[i]),
+                            "loss": tf.get_static_value(loss_per_cell[i])
+                        }),
+                        on="labels",
+                    )
+                    for i, df in enumerate(batch["activity_df"])
+                ]
+                #
+                loss_mask = self.batchwise_loss_selection(
+                    batch["activity_df"], batch["instance_mask"], batch["marker"], batch["dataset"]
+                )
+                loss_mask *= tf.cast(tf.squeeze(batch["binary_mask"], -1), tf.float32)
+
+
     @staticmethod
     @tf.autograph.experimental.do_not_convert
     def reduce_to_cells(tuple_in):
@@ -292,13 +330,17 @@ class PromixNaive(ModelBuilder):
             loss_selection.append(tf.cast(positive_mask, tf.float32))
         return tf.stack(loss_selection)
 
-    def class_wise_loss_selection(self, positive_df, negative_df, marker, dataset):
+    def class_wise_loss_selection(
+        self, positive_df, negative_df, marker, dataset, adjust_quantile=True
+        ):
         """Selects the cells with the lowest loss for each class
         Args:
             positive_df (pd.DataFrame): dataframe with columns "labels", "activity" and "loss"
             negative_df (pd.DataFrame): dataframe with columns "labels", "activity" and "loss"
             marker (str): marker name
             dataset (str): dataset name
+            adjust_quantile (bool, optional): whether to adjust the quantile threshold. Defaults
+                to True.
         Returns:
             list: list of pd.DataFrame that contain the selected cells
         """
@@ -311,10 +353,11 @@ class PromixNaive(ModelBuilder):
             self.class_wise_loss_quantiles[dataset_marker] = {"positive": 1.0, "negative": 1.0}
             ema = 1.0
         if positive_df.shape[0] > 0:
-            self.class_wise_loss_quantiles[dataset_marker]["positive"] = (
-                self.class_wise_loss_quantiles[dataset_marker]["positive"] * (1 - ema)
-                + np.quantile(positive_df.loss, self.quantile) * ema
-            )
+            if adjust_quantile:
+                self.class_wise_loss_quantiles[dataset_marker]["positive"] = (
+                    self.class_wise_loss_quantiles[dataset_marker]["positive"] * (1 - ema)
+                    + np.quantile(positive_df.loss, self.quantile) * ema
+                )
             selected_subset.append(
                 positive_df[
                     positive_df["loss"] <=
@@ -322,10 +365,11 @@ class PromixNaive(ModelBuilder):
                 ]
             )
         if negative_df.shape[0] > 0:
-            self.class_wise_loss_quantiles[dataset_marker]["negative"] = (
-                self.class_wise_loss_quantiles[dataset_marker]["negative"] * (1 - ema)
-                + np.quantile(negative_df.loss, self.quantile) * ema
-            )
+            if adjust_quantile:
+                self.class_wise_loss_quantiles[dataset_marker]["negative"] = (
+                    self.class_wise_loss_quantiles[dataset_marker]["negative"] * (1 - ema)
+                    + np.quantile(negative_df.loss, self.quantile) * ema
+                )
             selected_subset.append(
                 negative_df[
                     negative_df["loss"] <=
