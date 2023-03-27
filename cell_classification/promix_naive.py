@@ -234,44 +234,6 @@ class PromixNaive(ModelBuilder):
                     print("Saving model to", model_fname)
                     self.model.save_weights(model_fname)
 
-    def promix_validation(self, ):
-        for dset_name, validation_dataset in zip(self.dataset_names, self.validation_datasets):
-            for batch in tqdm(validation_dataset):
-                # prepare loss mask with unaugmented batches
-                x_mplex, x_binary, y = self.prep_batches_promix(batch)
-                x = tf.concat([x_mplex, x_binary], axis=-1)
-                y_pred = self.model(x, training=False)
-                loss_img = self.loss_fn(y, y_pred)
-                uniques, loss_per_cell = tf.map_fn(
-                    self.reduce_to_cells,
-                    (loss_img, batch["instance_mask"]),
-                    infer_shape=False,
-                    parallel_iterations=4,
-                    fn_output_signature=[
-                        tf.RaggedTensorSpec(shape=[None], dtype=tf.int32, ragged_rank=0),
-                        tf.RaggedTensorSpec(shape=[None], dtype=tf.float32, ragged_rank=0),
-                    ],
-                )
-                batch["activity_df"] = [
-                    pd.read_json(df.decode()) for df in tf.get_static_value(batch["activity_df"])
-                ]
-                batch["activity_df"] = [
-                    df.merge(
-                        pd.DataFrame({
-                            "labels": tf.get_static_value(uniques[i]),
-                            "loss": tf.get_static_value(loss_per_cell[i])
-                        }),
-                        on="labels",
-                    )
-                    for i, df in enumerate(batch["activity_df"])
-                ]
-                #
-                loss_mask = self.batchwise_loss_selection(
-                    batch["activity_df"], batch["instance_mask"], batch["marker"], batch["dataset"]
-                )
-                loss_mask *= tf.cast(tf.squeeze(batch["binary_mask"], -1), tf.float32)
-
-
     @staticmethod
     @tf.autograph.experimental.do_not_convert
     def reduce_to_cells(tuple_in):
@@ -332,7 +294,7 @@ class PromixNaive(ModelBuilder):
 
     def class_wise_loss_selection(
         self, positive_df, negative_df, marker, dataset, adjust_quantile=True
-        ):
+    ):
         """Selects the cells with the lowest loss for each class
         Args:
             positive_df (pd.DataFrame): dataframe with columns "labels", "activity" and "loss"

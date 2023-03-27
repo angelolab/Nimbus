@@ -53,11 +53,11 @@ def calc_roc(pred_list, gt_key="marker_activity_mask", pred_key="prediction", ce
             # filter out cells with gt activity == 2
             df = sample["activity_df"].copy()
             df = df[df[gt_key] != 2]
-            gt = df[gt_key].to_numpy()
+            gt = df[gt_key].to_numpy().astype(int)
             pred = df[pred_key].to_numpy()
         else:
             foreground = sample["binary_mask"] > 0
-            gt = sample[gt_key][foreground].flatten()
+            gt = sample[gt_key][foreground].flatten().astype(int)
             pred = sample[pred_key][foreground].flatten()
         if gt.size > 0 and gt.min() == 0 and gt.max() > 0:  # roc is only defined for this interval
             fpr, tpr, thresholds = roc_curve(gt, pred)
@@ -86,7 +86,7 @@ def calc_scores(gt, pred, threshold):
     pred = pred[gt < 2]
     gt = gt[gt < 2]
     tn, fp, fn, tp = confusion_matrix(
-        y_true=gt, y_pred=(pred >= threshold).astype(int), labels=[0, 1]
+        y_true=gt.astype(int), y_pred=(pred >= threshold).astype(int), labels=[0, 1]
     ).ravel()
     metrics = {
         "tp": tp, "tn": tn, "fp": fp, "fn": fn,
@@ -128,11 +128,11 @@ def calc_metrics(
                 df = sample["activity_df"]
                 # filter out cells with gt activity == 2
                 df = df[df[gt_key] != 2]
-                gt = np.array(df[gt_key])
+                gt = np.array(df[gt_key]).astype(int)
                 pred = np.array(df[pred_key])
             else:
                 foreground = sample["binary_mask"] > 0
-                gt = sample[gt_key][foreground].flatten()
+                gt = sample[gt_key][foreground].flatten().astype(int)
                 pred = sample[pred_key][foreground].flatten()
             if gt.size == 0:
                 continue

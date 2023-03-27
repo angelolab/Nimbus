@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import os
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
 
 def test_reduce_to_cells():
