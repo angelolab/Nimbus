@@ -1,5 +1,5 @@
 from segmentation_data_prep_test import prep_object_and_inputs
-from promix_naive import PromixNaive
+from cell_classification.promix_naive import PromixNaive
 import toml
 import tempfile
 import numpy as np

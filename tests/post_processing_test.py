@@ -1,4 +1,4 @@
-from post_processing import process_to_cells, merge_activity_df
+from cell_classification.post_processing import process_to_cells, merge_activity_df
 import numpy as np
 import pandas as pd
 

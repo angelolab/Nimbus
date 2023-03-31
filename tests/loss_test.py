@@ -1,4 +1,4 @@
-from loss import Loss
+from cell_classification.loss import Loss
 import numpy as np
 import tensorflow as tf
 

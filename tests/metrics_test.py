@@ -1,9 +1,9 @@
 from segmentation_data_prep_test import prep_object_and_inputs
-from model_builder import ModelBuilder
+from cell_classification.model_builder import ModelBuilder
 import tempfile
 import toml
 import os
-from metrics import calc_roc, calc_metrics, average_roc, HDF5Loader
+from cell_classification.metrics import calc_roc, calc_metrics, average_roc, HDF5Loader
 import numpy as np
 import pandas as pd
 import tensorflow as tf

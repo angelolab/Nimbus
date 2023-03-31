@@ -1,5 +1,5 @@
-from application import CellClassification, cell_preprocess
-from model_builder import ModelBuilder
+from cell_classification.application import CellClassification, cell_preprocess
+from cell_classification.model_builder import ModelBuilder
 from segmentation_data_prep_test import prep_object_and_inputs
 import numpy as np
 import tempfile
@@ -13,7 +13,7 @@ def predict_test():
         data_prep.tf_record_path = temp_dir
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
-        params = toml.load("cell_classification/configs/params.toml")
+        params = toml.load("../src/cell_classification/configs/params.toml")
         params["record_path"] = tf_record_path
         params["path"] = temp_dir
         params["experiment"] = "test"

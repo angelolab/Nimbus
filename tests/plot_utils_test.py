@@ -1,12 +1,12 @@
 from cgi import test
-from segmentation_data_prep import parse_dict, feature_description
+from cell_classification.segmentation_data_prep import parse_dict, feature_description
 from segmentation_data_prep_test import prep_object_and_inputs
 import pytest
 import tempfile
-from plot_utils import plot_overlay, plot_together, plot_average_roc, subset_plots, heatmap_plot
-from plot_utils import plot_metrics_against_threshold, subset_activity_df, collapse_activity_dfs
+from cell_classification.plot_utils import plot_overlay, plot_together, plot_average_roc, subset_plots, heatmap_plot
+from cell_classification.plot_utils import plot_metrics_against_threshold, subset_activity_df, collapse_activity_dfs
 from metrics_test import make_pred_list
-from metrics import calc_roc, average_roc, calc_metrics
+from cell_classification.metrics import calc_roc, average_roc, calc_metrics
 import os
 import tensorflow as tf
 

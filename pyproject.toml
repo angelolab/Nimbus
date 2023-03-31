@@ -1,0 +1,152 @@
+[build-system]
+requires = [
+    "setuptools",
+    "wheel",
+    "Cython>=0.29.24,<1",
+    "numpy>=1.16.3,<2",
+    "setuptools_scm[toml]>=6.2",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+dependencies = [
+    "numpy>=1.20",
+    "tensorflow>=2.8",
+    "keras>=2.12.0",
+    "spektral>=1.2",
+    "protobuf>=4.2",
+    "scikit-image>=0.20",
+    "scikit-learn>=1.2.2",
+    "deepcell>=0.12.5",
+    "tifffile>=2023",
+    "tqdm>=4",
+    "imgaug>=0.4.0",
+    "opencv-python>=4.6",
+    "toml",
+    "tables>=3",
+    "h5py>=3.7",
+    "seaborn>=0.12",
+]
+name = "cell_classification"
+authors = [{ name = "Angelo Lab", email = "theangelolab@gmail.com" }]
+description = "Toolbox for analysis on segmented images from MIBI"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "Modified Apache License 2.0" }
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "License :: OSI Approved :: Apache Software License",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+dynamic = ["version"]
+urls = { repository = "https://github.com/angelolab/cell_classification" }
+
+[project.optional-dependencies]
+test = [
+    "attrs",
+    "coveralls[toml]",
+    "pytest",
+    "pytest-cases",
+    "pytest-cov",
+    "pytest-mock",
+    "pytest-pycodestyle",
+    "pytest-randomly",
+]
+
+[tool.setuptools_scm]
+version_scheme = "release-branch-semver"
+local_scheme = "no-local-version"
+
+[tool.cibuildwheel]
+build = ["cp38-*"]
+skip = [
+    "macosx_arm64",  # arm64 MacOS Builds, TF2 has no wheels for Apple Silicon
+    "cp36-*",        # Python 3.6
+    "cp37-*",        # Python 3.7
+    "cp39-*",        # Python 3.9
+    "cp310-*",       # Python 3.10
+    "cp311-*",       # Python 3.11
+    "*-musllinux_*", # Musllinux
+    "pp*",           # PyPy wheels on all platforms
+    "*_i686",        # 32bit Linux Wheels
+    "*_s390x",       # IBM System/390, "mainframe"
+    "*-win32",       # 32bit Windows Wheels
+    "*_ppc64le",     # PowerPC
+]
+
+# Run tests
+# test-extras = ["test"]
+# test-command = "pytest {project}/tests"
+build-frontend = "build"
+build-verbosity = 3
+
+# Avoid testing on emulated architectures
+test-skip = [
+    "*-win_arm64",               # Skip testing emulated arm64 biulds on Windows
+    "*-*linux_aarch64",          # Skip testing emulated Linux builds
+    "*-macosx_arm64",            # Skip testing emulated arm64 builds on Intel Macs
+    "*-macosx_universal2:arm64", # Skip testing emulated arm64 portion of universal2 builds
+]
+
+# "manylinux" versioning
+# PEP 600: https://peps.python.org/pep-0600/
+# Build using the manylinux_2_28 image
+manylinux-x86_64-image = "manylinux_2_28"
+manylinux-aarch64-image = "manylinux_2_28"
+
+
+# On an Linux Intel runner with qemu installed, build Intel and aarch64 (arm) wheels
+[tool.cibuildwheel.linux]
+archs = ["x86_64", "aarch64"]
+repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel}"
+
+# Build `universal2` and `arm64` wheels on an Intel runner.
+# Note that the `arm64` wheel and the `arm64` part of the `universal2` wheel cannot be tested in this configuration.
+[tool.cibuildwheel.macos]
+archs = ["x86_64", "arm64", "universal2"]
+repair-wheel-command = "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}"
+
+# Build for Windows x86_64, and ARM 64
+[tool.cibuildwheel.windows]
+archs = ["AMD64", "ARM64"]
+# might not need to repair with delvewheel?
+# before-build = "pip install delvewheel"                          # Use delvewheel on windows
+# repair-wheel-command = "delvewheel repair -w {dest_dir} {wheel}"
+
+# Coverage
+[tool.coverage.paths]
+source = ["src", "*/site-packages"]
+
+[tool.coverage.run]
+branch = true
+source = ["cell_classification"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "except ImportError",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "(ArrowInvalid, OSError, IOError)",
+]
+
+# Pytest Options
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+addopts = [
+    "-v",
+    "-s",
+    "--durations=20",
+    "--randomly-seed=24",
+    "--randomly-dont-reorganize",
+    "--cov=ark",
+    "--cov-report=lcov",
+    "--pycodestyle",
+]
+console_output_style = "count"
+testpaths = ["tests"]

@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import json
 from tifffile import imwrite, imread
-from segmentation_data_prep import SegmentationTFRecords, feature_description, parse_dict
+from cell_classification.segmentation_data_prep import SegmentationTFRecords, feature_description, parse_dict
 import copy
 import tensorflow as tf
 

@@ -1,8 +1,8 @@
 import pytest
 import numpy as np
-from augmentation_pipeline import augment_images, get_augmentation_pipeline, prepare_tf_aug, py_aug
-from augmentation_pipeline import prepare_keras_aug, Flip, Rot90, GaussianNoise, GaussianBlur, Zoom
-from augmentation_pipeline import LinearContrast, MixUp
+from cell_classification.augmentation_pipeline import augment_images, get_augmentation_pipeline, prepare_tf_aug, py_aug
+from cell_classification.augmentation_pipeline import prepare_keras_aug, Flip, Rot90, GaussianNoise, GaussianBlur, Zoom
+from cell_classification.augmentation_pipeline import LinearContrast, MixUp
 import tensorflow as tf
 import imgaug.augmenters as iaa
 import tensorflow as tf
