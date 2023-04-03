@@ -1,6 +1,6 @@
 import pandas as pd
 
-from .segmentation_data_prep import SegmentationTFRecords
+from segmentation_data_prep import SegmentationTFRecords
 
 
 class SimpleTFRecords(SegmentationTFRecords):
