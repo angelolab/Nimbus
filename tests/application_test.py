@@ -1,6 +1,6 @@
 from cell_classification.application import CellClassification, cell_preprocess
 from cell_classification.model_builder import ModelBuilder
-from segmentation_data_prep_test import prep_object_and_inputs
+from .segmentation_data_prep_test import prep_object_and_inputs
 import numpy as np
 import tempfile
 import toml
