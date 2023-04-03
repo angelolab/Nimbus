@@ -1,6 +1,6 @@
 from cgi import test
 from cell_classification.segmentation_data_prep import parse_dict, feature_description
-from segmentation_data_prep_test import prep_object_and_inputs
+from .segmentation_data_prep_test import prep_object_and_inputs
 import pytest
 import tempfile
 from cell_classification.plot_utils import plot_overlay, plot_together, plot_average_roc, subset_plots, heatmap_plot
