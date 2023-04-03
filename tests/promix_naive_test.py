@@ -81,14 +81,14 @@ def test_train(config_params):
         trainer.train()
 
         # check params.toml is dumped to file and contains the created paths
-        assert "params.toml" in os.listdir(trainer.config_params["model_dir"])
-        loaded_params = toml.load(os.path.join(trainer.config_params["model_dir"], "params.toml"))
+        assert "params.toml" in os.listdir(trainer.params["model_dir"])
+        loaded_params = toml.load(os.path.join(trainer.params["model_dir"], "params.toml"))
         for key in ["model_dir", "log_dir", "model_path"]:
             assert key in list(loaded_params.keys())
 
         # check if model can be loaded from file
         trainer.model = None
-        trainer.load_model(trainer.config_params["model_path"])
+        trainer.load_model(trainer.params["model_path"])
         assert isinstance(trainer.model, tf.keras.Model)
 
 

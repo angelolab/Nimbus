@@ -108,7 +108,7 @@ def test_HDF5Generator(config_params):
         model = ModelBuilder(config_params)
         model.train()
         model.predict_dataset(model.validation_datasets[0], save_predictions=True)
-        generator = HDF5Loader(model.config_params['eval_dir'])
+        generator = HDF5Loader(model.params['eval_dir'])
 
         # check if generator has the right number of items
         assert [len(generator)] == config_params['num_validation']

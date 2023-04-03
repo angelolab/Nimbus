@@ -96,7 +96,7 @@ def test_prep_data(config_params):
             assert len(next(iter(test_dataset))) == 2
 
         # check if in eval mode validation samples contain all original example keys
-        trainer.config_params["eval"] = True
+        trainer.params["eval"] = True
         trainer.prep_data()
         val_dset = iter(trainer.validation_datasets[0])
         val_batch = next(val_dset)
@@ -163,13 +163,13 @@ def test_prep_model(config_params):
         assert isinstance(trainer.optimizer, tf.keras.optimizers.Optimizer)
 
         # check if all the directories were created
-        assert os.path.exists(trainer.config_params["log_dir"])
-        assert os.path.exists(trainer.config_params["model_dir"])
+        assert os.path.exists(trainer.params["log_dir"])
+        assert os.path.exists(trainer.params["model_dir"])
 
         # check if model path is taken from params.toml if it exists
-        trainer.config_params["model_path"] = os.path.join(temp_dir, "test_dir", "test.h5")
+        trainer.params["model_path"] = os.path.join(temp_dir, "test_dir", "test.h5")
         trainer.prep_model()
-        assert trainer.config_params["model_path"] == os.path.join(temp_dir, "test_dir", "test.h5")
+        assert trainer.params["model_path"] == os.path.join(temp_dir, "test_dir", "test.h5")
 
 
 def test_train_step(config_params):
@@ -229,14 +229,14 @@ def test_train(config_params):
         trainer.train()
 
         # check params.toml is dumped to file and contains the created paths
-        assert "params.toml" in os.listdir(trainer.config_params["model_dir"])
-        loaded_params = toml.load(os.path.join(trainer.config_params["model_dir"], "params.toml"))
+        assert "params.toml" in os.listdir(trainer.params["model_dir"])
+        loaded_params = toml.load(os.path.join(trainer.params["model_dir"], "params.toml"))
         for key in ["model_dir", "log_dir", "model_path"]:
             assert key in list(loaded_params.keys())
 
         # check if model can be loaded from file
         trainer.model = None
-        trainer.load_model(trainer.config_params["model_path"])
+        trainer.load_model(trainer.params["model_path"])
         assert isinstance(trainer.model, tf.keras.Model)
 
 
@@ -264,11 +264,11 @@ def test_tensorboard_callbacks(config_params):
         trainer.train()
 
         # check if loss history is written to file
-        assert "tfevents" in os.listdir(trainer.config_params["log_dir"])[0]
+        assert "tfevents" in os.listdir(trainer.params["log_dir"])[0]
 
         # check if model checkpoint is written to file
-        assert os.path.split(trainer.config_params["model_path"])[-1] in os.listdir(
-            trainer.config_params["model_dir"]
+        assert os.path.split(trainer.params["model_path"])[-1] in os.listdir(
+            trainer.params["model_dir"]
         )
 
 
