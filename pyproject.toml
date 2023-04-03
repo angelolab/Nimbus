@@ -12,7 +12,7 @@ build-backend = "setuptools.build_meta"
 dependencies = [
     "numpy>=1.20",
     "deepcell>=0.12.5",
-    "tensorflow>=2.8",
+    "tensorflow>=2.12",
     "keras>=2",
     "spektral>=1",
     "protobuf>=4.20",
@@ -31,12 +31,12 @@ name = "cell_classification"
 authors = [{ name = "Angelo Lab", email = "theangelolab@gmail.com" }]
 description = "Toolbox for analysis on segmented images from MIBI"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 license = { text = "Modified Apache License 2.0" }
 classifiers = [
     "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
     "License :: OSI Approved :: Apache Software License",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Scientific/Engineering :: Image Processing",
