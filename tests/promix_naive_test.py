@@ -18,7 +18,7 @@ def test_reduce_to_cells(config_params):
     instance_mask[-1, instance_mask[-1] == 1] = 0
     marker_activity_mask = np.zeros_like(instance_mask)
     marker_activity_mask[instance_mask > 90] = 1
-    trainer = PromixNaive(params)
+    trainer = PromixNaive(config_params)
     uniques, mean_per_cell = tf.map_fn(
         trainer.reduce_to_cells,
         (pred, instance_mask),
