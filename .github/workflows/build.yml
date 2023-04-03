@@ -7,8 +7,8 @@ permissions:
   contents: read # to fetch code (actions/checkout)
 
 jobs:
-  build_wheels:
-    name: Pure Python Wheel
+  build:
+    name: Build Pure Python Wheel and Source Distribution
     runs-on: ubuntu-latest
 
     steps:
@@ -18,7 +18,7 @@ jobs:
           fetch-depth: 0
 
       - name: Build Wheels
-        run: pipx run build --wheel
+        run: pipx run build
 
       - name: Check wheel Metadata
         run: pipx run twine check dist/*
@@ -28,22 +28,3 @@ jobs:
         with:
           name: distributions
           path: dist/*.whl
-
-  build_sdist:
-    name:  Source Distribution
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout ${{ github.repository }}
-        uses: actions/checkout@v3
-
-      - name: Build sdist
-        run: pipx run build --sdist
-
-      - name: Check sdist Metadata
-        run: pipx run twine check dist/*
-
-      - name: Store sdist Artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: distributions
-          path: dist/*.tar.gz

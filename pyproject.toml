@@ -15,7 +15,7 @@ dependencies = [
     "tensorflow==2.8",
     "keras>=2",
     "spektral>=1",
-    "protobuf>=4.20",
+    "protobuf==3.20",
     "scikit-image>=0.16,<0.20",
     "scikit-learn>=1.2.2",
     "tifffile>=2023",
