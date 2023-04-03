@@ -11,8 +11,7 @@ from cell_classification.promix_naive import PromixNaive
 from .segmentation_data_prep_test import prep_object_and_inputs
 
 
-def test_reduce_to_cells():
-    params = toml.load("cell_classification/configs/params.toml")
+def test_reduce_to_cells(config_params):
     config_params["test"] = True
     pred = np.random.rand(16, 256, 266)
     instance_mask = np.random.randint(0, 100, (16, 256, 266))
@@ -43,10 +42,9 @@ def test_reduce_to_cells():
         )
 
 
-def test_matched_high_confidence_selection_thresholds():
-    params = toml.load("cell_classification/configs/params.toml")
+def test_matched_high_confidence_selection_thresholds(config_params):
     config_params["test"] = True
-    trainer = PromixNaive(params)
+    trainer = PromixNaive(config_params)
     trainer.matched_high_confidence_selection_thresholds()
     thresholds = trainer.confidence_loss_thresholds
     # check that the output has the right dimension
@@ -55,14 +53,13 @@ def test_matched_high_confidence_selection_thresholds():
     assert thresholds["negative"] > 0.0
 
 
-def test_train():
+def test_train(config_params):
     os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
     with tempfile.TemporaryDirectory() as temp_dir:
         data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
         data_prep.tf_record_path = temp_dir
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
-        params = toml.load("cell_classification/configs/params.toml")
         config_params["record_path"] = [tf_record_path]
         config_params["path"] = temp_dir
         config_params["experiment"] = "test"
@@ -80,7 +77,7 @@ def test_train():
         config_params["ema"] = 0.01
         config_params["confidence_thresholds"] = [0.1, 0.9]
         config_params["mixup_prob"] = 0.5
-        trainer = PromixNaive(params)
+        trainer = PromixNaive(config_params)
         trainer.train()
 
         # check params.toml is dumped to file and contains the created paths
@@ -95,13 +92,12 @@ def test_train():
         assert isinstance(trainer.model, tf.keras.Model)
 
 
-def test_prep_data():
+def test_prep_data(config_params):
     with tempfile.TemporaryDirectory() as temp_dir:
         data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
         data_prep.tf_record_path = temp_dir
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
-        params = toml.load("cell_classification/configs/params.toml")
         config_params["record_path"] = tf_record_path
         config_params["path"] = temp_dir
         config_params["experiment"] = "test"
@@ -111,7 +107,7 @@ def test_prep_data():
         config_params["num_validation"] = [2]
         config_params["num_test"] = [2]
         config_params["batch_size"] = 2
-        trainer = PromixNaive(params)
+        trainer = PromixNaive(config_params)
         trainer.prep_data()
 
         # check if train and validation datasets exists and are of the right type
@@ -138,10 +134,9 @@ def prepare_activity_df():
     return activity_df_list
 
 
-def test_class_wise_loss_selection():
-    params = toml.load("cell_classification/configs/params.toml")
+def test_class_wise_loss_selection(config_params):
     config_params["test"] = True
-    trainer = PromixNaive(params)
+    trainer = PromixNaive(config_params)
     activity_df_list = prepare_activity_df()
     df = activity_df_list[0]
     marker = df["marker"][0]
@@ -176,10 +171,8 @@ def test_class_wise_loss_selection():
     assert trainer.class_wise_loss_quantiles[dataset_marker]["negative"] != 0.5
 
 
-def test_matched_high_confidence_selection():
-    params = toml.load("cell_classification/configs/params.toml")
-    config_params["test"] = True
-    trainer = PromixNaive(params)
+def test_matched_high_confidence_selection(config_params):
+    trainer = PromixNaive(config_params)
     activity_df_list = prepare_activity_df()
     df = activity_df_list[0]
     df["loss"] = df.activity * df.prediction + (1 - df.activity) * (1 - df.prediction)
@@ -199,10 +192,9 @@ def test_matched_high_confidence_selection():
     assert (df.loss.values[0] <= trainer.confidence_loss_thresholds[gt_activity]).numpy()
 
 
-def test_batchwise_loss_selection():
-    params = toml.load("cell_classification/configs/params.toml")
+def test_batchwise_loss_selection(config_params):
     config_params["test"] = True
-    trainer = PromixNaive(params)
+    trainer = PromixNaive(config_params)
     trainer.matched_high_confidence_selection_thresholds()
     activity_df_list = prepare_activity_df()
     instance_mask = np.zeros([256, 256], dtype=np.uint8)
@@ -228,10 +220,9 @@ def test_batchwise_loss_selection():
     assert np.array_equal(loss_mask[0], loss_mask[1])
 
 
-def test_quantile_scheduler():
-    params = toml.load("cell_classification/configs/params.toml")
+def test_quantile_scheduler(config_params):
     config_params["test"] = True
-    trainer = PromixNaive(params)
+    trainer = PromixNaive(config_params)
     quantile_start = config_params["quantile"]
     quantile_end = config_params["quantile_end"]
     quantile_warmup_steps = config_params["quantile_warmup_steps"]
@@ -247,13 +238,12 @@ def test_quantile_scheduler():
     assert step_n_quantile == quantile_end
 
 
-def test_gen_prep_batches_promix_fn():
+def test_gen_prep_batches_promix_fn(config_params):
     with tempfile.TemporaryDirectory() as temp_dir:
         data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
         data_prep.tf_record_path = temp_dir
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
-        params = toml.load("cell_classification/configs/params.toml")
         config_params["record_path"] = [tf_record_path]
         config_params["path"] = temp_dir
         config_params["batch_constituents"] = ["mplex_img", "binary_mask", "nuclei_img", "membrane_img"]
@@ -265,7 +255,7 @@ def test_gen_prep_batches_promix_fn():
         config_params["test"] = True
         config_params["num_validation"] = [2]
         config_params["num_test"] = [2]
-        trainer = PromixNaive(params)
+        trainer = PromixNaive(config_params)
         trainer.prep_data()
         example = next(iter(trainer.train_dataset))
         prep_batches_promix_4 = trainer.prep_batches_promix
