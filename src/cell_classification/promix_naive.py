@@ -359,7 +359,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--params",
         type=str,
-        default="cell_classification/configs/params.toml",
+        default="configs/params.toml",
     )
     args = parser.parse_args()
     params = toml.load(args.params)

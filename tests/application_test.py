@@ -2,7 +2,6 @@ import os
 import tempfile
 
 import numpy as np
-import toml
 
 from cell_classification.application import CellClassification, cell_preprocess
 from cell_classification.model_builder import ModelBuilder
@@ -10,23 +9,22 @@ from cell_classification.model_builder import ModelBuilder
 from .segmentation_data_prep_test import prep_object_and_inputs
 
 
-def predict_test():
+def predict_test(config_params):
     with tempfile.TemporaryDirectory() as temp_dir:
         data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
         data_prep.tf_record_path = temp_dir
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
-        params = toml.load("../src/cell_classification/configs/params.toml")
-        params["record_path"] = tf_record_path
-        params["path"] = temp_dir
-        params["experiment"] = "test"
-        params["num_steps"] = 20
-        params["num_validation"] = 2
-        params["batch_size"] = 2
-        params["test"] = True
-        params["snap_steps"] = 5000
-        params["val_steps"] = 5000
-        trainer = ModelBuilder(params)
+        config_params["record_path"] = tf_record_path
+        config_params["path"] = temp_dir
+        config_params["experiment"] = "test"
+        config_params["num_steps"] = 20
+        config_params["num_validation"] = 2
+        config_params["batch_size"] = 2
+        config_params["test"] = True
+        config_params["snap_steps"] = 5000
+        config_params["val_steps"] = 5000
+        trainer = ModelBuilder(config_params)
         trainer.train()
         input_data = np.random.rand(1, 1024, 1024, 2)
         prediction = CellClassification(trainer.model).predict(

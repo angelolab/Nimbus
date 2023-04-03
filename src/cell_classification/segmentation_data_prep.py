@@ -344,7 +344,7 @@ class SegmentationTFRecords:
         os.makedirs(self.tf_record_path, exist_ok=True)
 
         # DATA DIR
-        validate_paths(self.data_dir, data_prefix=False)
+        validate_paths(self.data_dir)
         self.data_folders = [
             os.path.join(self.data_dir, folder) for folder in list_folders(self.data_dir)
         ]
@@ -366,7 +366,7 @@ class SegmentationTFRecords:
         # NORMALIZATION DICT
         # load or construct normalization dict
         if self.normalization_dict_path:
-            validate_paths(self.normalization_dict_path, data_prefix=False)
+            validate_paths(self.normalization_dict_path)
             self.normalization_dict = json.load(open(self.normalization_dict_path, "r"))
 
             # check if selected markers are in normalization dict
@@ -406,7 +406,7 @@ class SegmentationTFRecords:
         """Checks the additional inputs for correctness"""
         # CONVERSION MATRIX
         # read the file
-        validate_paths(self.conversion_matrix_path, data_prefix=False)
+        validate_paths(self.conversion_matrix_path)
         self.conversion_matrix = pd.read_csv(self.conversion_matrix_path, index_col=0)
 
         # check if markers were selected or take all markers from conversion matrix

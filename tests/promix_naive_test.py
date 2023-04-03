@@ -13,7 +13,7 @@ from .segmentation_data_prep_test import prep_object_and_inputs
 
 def test_reduce_to_cells():
     params = toml.load("cell_classification/configs/params.toml")
-    params["test"] = True
+    config_params["test"] = True
     pred = np.random.rand(16, 256, 266)
     instance_mask = np.random.randint(0, 100, (16, 256, 266))
     instance_mask[-1, instance_mask[-1] == 1] = 0
@@ -45,7 +45,7 @@ def test_reduce_to_cells():
 
 def test_matched_high_confidence_selection_thresholds():
     params = toml.load("cell_classification/configs/params.toml")
-    params["test"] = True
+    config_params["test"] = True
     trainer = PromixNaive(params)
     trainer.matched_high_confidence_selection_thresholds()
     thresholds = trainer.confidence_loss_thresholds
@@ -63,35 +63,35 @@ def test_train():
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
         params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = [tf_record_path]
-        params["path"] = temp_dir
-        params["experiment"] = "test"
-        params["dataset_names"] = ["test1"]
-        params["dataset_sample_probs"] = [1.0]
-        params["num_steps"] = 7
-        params["num_validation"] = [2]
-        params["num_test"] = [2]
-        params["batch_size"] = 2
-        params["test"] = True
-        params["weight_decay"] = 1e-4
-        params["snap_steps"] = 5
-        params["val_steps"] = 5
-        params["quantile"] = 0.3
-        params["ema"] = 0.01
-        params["confidence_thresholds"] = [0.1, 0.9]
-        params["mixup_prob"] = 0.5
+        config_params["record_path"] = [tf_record_path]
+        config_params["path"] = temp_dir
+        config_params["experiment"] = "test"
+        config_params["dataset_names"] = ["test1"]
+        config_params["dataset_sample_probs"] = [1.0]
+        config_params["num_steps"] = 7
+        config_params["num_validation"] = [2]
+        config_params["num_test"] = [2]
+        config_params["batch_size"] = 2
+        config_params["test"] = True
+        config_params["weight_decay"] = 1e-4
+        config_params["snap_steps"] = 5
+        config_params["val_steps"] = 5
+        config_params["quantile"] = 0.3
+        config_params["ema"] = 0.01
+        config_params["confidence_thresholds"] = [0.1, 0.9]
+        config_params["mixup_prob"] = 0.5
         trainer = PromixNaive(params)
         trainer.train()
 
         # check params.toml is dumped to file and contains the created paths
-        assert "params.toml" in os.listdir(trainer.params["model_dir"])
-        loaded_params = toml.load(os.path.join(trainer.params["model_dir"], "params.toml"))
+        assert "params.toml" in os.listdir(trainer.config_params["model_dir"])
+        loaded_params = toml.load(os.path.join(trainer.config_params["model_dir"], "params.toml"))
         for key in ["model_dir", "log_dir", "model_path"]:
             assert key in list(loaded_params.keys())
 
         # check if model can be loaded from file
         trainer.model = None
-        trainer.load_model(trainer.params["model_path"])
+        trainer.load_model(trainer.config_params["model_path"])
         assert isinstance(trainer.model, tf.keras.Model)
 
 
@@ -102,15 +102,15 @@ def test_prep_data():
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
         params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = tf_record_path
-        params["path"] = temp_dir
-        params["experiment"] = "test"
-        params["dataset_names"] = ["test1"]
-        params["dataset_sample_probs"] = [1.0]
-        params["num_steps"] = 3
-        params["num_validation"] = [2]
-        params["num_test"] = [2]
-        params["batch_size"] = 2
+        config_params["record_path"] = tf_record_path
+        config_params["path"] = temp_dir
+        config_params["experiment"] = "test"
+        config_params["dataset_names"] = ["test1"]
+        config_params["dataset_sample_probs"] = [1.0]
+        config_params["num_steps"] = 3
+        config_params["num_validation"] = [2]
+        config_params["num_test"] = [2]
+        config_params["batch_size"] = 2
         trainer = PromixNaive(params)
         trainer.prep_data()
 
@@ -140,7 +140,7 @@ def prepare_activity_df():
 
 def test_class_wise_loss_selection():
     params = toml.load("cell_classification/configs/params.toml")
-    params["test"] = True
+    config_params["test"] = True
     trainer = PromixNaive(params)
     activity_df_list = prepare_activity_df()
     df = activity_df_list[0]
@@ -178,7 +178,7 @@ def test_class_wise_loss_selection():
 
 def test_matched_high_confidence_selection():
     params = toml.load("cell_classification/configs/params.toml")
-    params["test"] = True
+    config_params["test"] = True
     trainer = PromixNaive(params)
     activity_df_list = prepare_activity_df()
     df = activity_df_list[0]
@@ -201,7 +201,7 @@ def test_matched_high_confidence_selection():
 
 def test_batchwise_loss_selection():
     params = toml.load("cell_classification/configs/params.toml")
-    params["test"] = True
+    config_params["test"] = True
     trainer = PromixNaive(params)
     trainer.matched_high_confidence_selection_thresholds()
     activity_df_list = prepare_activity_df()
@@ -230,11 +230,11 @@ def test_batchwise_loss_selection():
 
 def test_quantile_scheduler():
     params = toml.load("cell_classification/configs/params.toml")
-    params["test"] = True
+    config_params["test"] = True
     trainer = PromixNaive(params)
-    quantile_start = params["quantile"]
-    quantile_end = params["quantile_end"]
-    quantile_warmup_steps = params["quantile_warmup_steps"]
+    quantile_start = config_params["quantile"]
+    quantile_end = config_params["quantile_end"]
+    quantile_warmup_steps = config_params["quantile_warmup_steps"]
     step_0_quantile = trainer.quantile_scheduler(0)
     step_half_warmpup_quantile = trainer.quantile_scheduler(quantile_warmup_steps // 2)
     step_warump_quantile = trainer.quantile_scheduler(quantile_warmup_steps)
@@ -254,17 +254,17 @@ def test_gen_prep_batches_promix_fn():
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
         params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = [tf_record_path]
-        params["path"] = temp_dir
-        params["batch_constituents"] = ["mplex_img", "binary_mask", "nuclei_img", "membrane_img"]
-        params["experiment"] = "test"
-        params["dataset_names"] = ["test1"]
-        params["num_steps"] = 20
-        params["dataset_sample_probs"] = [1.0]
-        params["batch_size"] = 1
-        params["test"] = True
-        params["num_validation"] = [2]
-        params["num_test"] = [2]
+        config_params["record_path"] = [tf_record_path]
+        config_params["path"] = temp_dir
+        config_params["batch_constituents"] = ["mplex_img", "binary_mask", "nuclei_img", "membrane_img"]
+        config_params["experiment"] = "test"
+        config_params["dataset_names"] = ["test1"]
+        config_params["num_steps"] = 20
+        config_params["dataset_sample_probs"] = [1.0]
+        config_params["batch_size"] = 1
+        config_params["test"] = True
+        config_params["num_validation"] = [2]
+        config_params["num_test"] = [2]
         trainer = PromixNaive(params)
         trainer.prep_data()
         example = next(iter(trainer.train_dataset))

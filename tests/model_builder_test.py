@@ -17,10 +17,9 @@ from .segmentation_data_prep_test import prep_object_and_inputs
 tf.config.run_functions_eagerly(True)
 
 
-def test_prep_loss():
+def test_prep_loss(config_params):
     with tempfile.TemporaryDirectory() as temp_dir:
-        params = toml.load("cell_classification/configs/params.toml")
-        trainer = ModelBuilder(params)
+        trainer = ModelBuilder(config_params)
         loss_fn = trainer.prep_loss()
 
         # sanity check outputs of loss function
@@ -34,7 +33,7 @@ def test_prep_loss():
         assert tf.reduce_min(loss) >= 0
 
 
-def test_prep_data():
+def test_prep_data(config_params):
     with tempfile.TemporaryDirectory() as temp_dir:
         print(os.path.exists(temp_dir))
         tf_record_paths = []
@@ -49,17 +48,16 @@ def test_prep_data():
                 data_prep.tf_record_path, "testdata_{}.tfrecord".format(i)
             )
             tf_record_paths.append(tf_record_path)
-        params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = tf_record_paths
-        params["dataset_names"] = ["test1", "test2"]
-        params["dataset_sample_probs"] = [0.5, 0.5]
-        params["path"] = temp_dir
-        params["experiment"] = "test"
-        params["num_steps"] = 20
-        params["num_validation"] = [2, 2]
-        params["num_test"] = [2, 2]
-        params["batch_size"] = 2
-        trainer = ModelBuilder(params)
+        config_params["record_path"] = tf_record_paths
+        config_params["dataset_names"] = ["test1", "test2"]
+        config_params["dataset_sample_probs"] = [0.5, 0.5]
+        config_params["path"] = temp_dir
+        config_params["experiment"] = "test"
+        config_params["num_steps"] = 20
+        config_params["num_validation"] = [2, 2]
+        config_params["num_test"] = [2, 2]
+        config_params["batch_size"] = 2
+        trainer = ModelBuilder(config_params)
         trainer.prep_data()
 
         # check if correct number of datasets are loaded
@@ -84,11 +82,11 @@ def test_prep_data():
         trainer.train_dataset = trainer.train_dataset.map(
             trainer.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
         )
-        assert next(iter(trainer.train_dataset))[0].shape[0] == params["batch_size"]
+        assert next(iter(trainer.train_dataset))[0].shape[0] == config_params["batch_size"]
         for validation_dataset in trainer.validation_datasets:
-            assert next(iter(validation_dataset))[0].shape[0] == params["batch_size"]
+            assert next(iter(validation_dataset))[0].shape[0] == config_params["batch_size"]
         for test_dataset in trainer.test_datasets:
-            assert next(iter(test_dataset))[0].shape[0] == params["batch_size"]
+            assert next(iter(test_dataset))[0].shape[0] == config_params["batch_size"]
 
         # check if samples only contains two files (inputs, targets)
         assert len(next(iter(trainer.train_dataset))) == 2
@@ -98,7 +96,7 @@ def test_prep_data():
             assert len(next(iter(test_dataset))) == 2
 
         # check if in eval mode validation samples contain all original example keys
-        trainer.params["eval"] = True
+        trainer.config_params["eval"] = True
         trainer.prep_data()
         val_dset = iter(trainer.validation_datasets[0])
         val_batch = next(val_dset)
@@ -124,20 +122,19 @@ def test_prep_data():
         assert set(batch_list) == set(["testdata_1"])
 
         # check if fov_filter works correctly when called inside prep_data
-        params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = [tf_record_path]
-        params["path"] = temp_dir
-        params["experiment"] = "test"
-        params["dataset_names"] = ["test1"]
-        params["num_steps"] = 20
-        params["dataset_sample_probs"] = [1.0]
-        params["batch_size"] = 1
+        config_params["record_path"] = [tf_record_path]
+        config_params["path"] = temp_dir
+        config_params["experiment"] = "test"
+        config_params["dataset_names"] = ["test1"]
+        config_params["num_steps"] = 20
+        config_params["dataset_sample_probs"] = [1.0]
+        config_params["batch_size"] = 1
         # prepare data splits json and add to params
         split = {"train": ["fov_0", "fov_1", "fov_2"], "validation": ["fov_3"], "test": ["fov_4"]}
         with open(os.path.join(temp_dir, "data_splits.json"), "w") as f:
             json.dump(split, f)
-        params["data_splits"] = [os.path.join(temp_dir, "data_splits.json")]
-        trainer = ModelBuilder(params)
+        config_params["data_splits"] = [os.path.join(temp_dir, "data_splits.json")]
+        trainer = ModelBuilder(config_params)
         trainer.prep_data()
         # check if we filtered the fovs correctly
         fovs = {"train": [], "validation": [], "test": []}
@@ -154,12 +151,11 @@ def test_prep_data():
             assert set(split[key]) == set(fovs[key])
 
 
-def test_prep_model():
+def test_prep_model(config_params):
     with tempfile.TemporaryDirectory() as temp_dir:
-        params = toml.load("cell_classification/configs/params.toml")
-        params["path"] = temp_dir
+        config_params["path"] = temp_dir
 
-        trainer = ModelBuilder(params)
+        trainer = ModelBuilder(config_params)
         trainer.prep_model()
 
         # check if right objects are instantiated
@@ -167,36 +163,35 @@ def test_prep_model():
         assert isinstance(trainer.optimizer, tf.keras.optimizers.Optimizer)
 
         # check if all the directories were created
-        assert os.path.exists(trainer.params["log_dir"])
-        assert os.path.exists(trainer.params["model_dir"])
+        assert os.path.exists(trainer.config_params["log_dir"])
+        assert os.path.exists(trainer.config_params["model_dir"])
 
         # check if model path is taken from params.toml if it exists
-        trainer.params["model_path"] = os.path.join(temp_dir, "test_dir", "test.h5")
+        trainer.config_params["model_path"] = os.path.join(temp_dir, "test_dir", "test.h5")
         trainer.prep_model()
-        assert trainer.params["model_path"] == os.path.join(temp_dir, "test_dir", "test.h5")
+        assert trainer.config_params["model_path"] == os.path.join(temp_dir, "test_dir", "test.h5")
 
 
-def test_train_step():
+def test_train_step(config_params):
     with tempfile.TemporaryDirectory() as temp_dir:
         data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
         data_prep.tf_record_path = temp_dir
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
-        params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = [tf_record_path]
-        params["path"] = temp_dir
-        params["experiment"] = "test"
-        params["dataset_names"] = ["test1"]
-        params["num_steps"] = 20
-        params["dataset_sample_probs"] = [1.0]
-        params["num_validation"] = [2]
-        params["num_test"] = [2]
-        params["batch_size"] = 2
-        params["test"] = True
-        params["weight_decay"] = 1e-4
-        params["snap_steps"] = 5
-        params["val_steps"] = 5
-        trainer = ModelBuilder(params)
+        config_params["record_path"] = [tf_record_path]
+        config_params["path"] = temp_dir
+        config_params["experiment"] = "test"
+        config_params["dataset_names"] = ["test1"]
+        config_params["num_steps"] = 20
+        config_params["dataset_sample_probs"] = [1.0]
+        config_params["num_validation"] = [2]
+        config_params["num_test"] = [2]
+        config_params["batch_size"] = 2
+        config_params["test"] = True
+        config_params["weight_decay"] = 1e-4
+        config_params["snap_steps"] = 5
+        config_params["val_steps"] = 5
+        trainer = ModelBuilder(config_params)
         trainer.prep_data()
         trainer.prep_model()
         trainer.train_dataset = trainer.train_dataset.map(
@@ -210,96 +205,93 @@ def test_train_step():
         assert loss > 0
 
 
-def test_train():
+def test_train(config_params):
     with tempfile.TemporaryDirectory() as temp_dir:
         data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
         data_prep.tf_record_path = temp_dir
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
-        params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = [tf_record_path]
-        params["path"] = temp_dir
-        params["experiment"] = "test"
-        params["dataset_names"] = ["test1"]
-        params["num_steps"] = 20
-        params["dataset_sample_probs"] = [1.0]
-        params["num_validation"] = [2]
-        params["num_test"] = [2]
-        params["batch_size"] = 2
-        params["test"] = True
-        params["weight_decay"] = 1e-4
-        params["snap_steps"] = 5
-        params["val_steps"] = 5
+        config_params["record_path"] = [tf_record_path]
+        config_params["path"] = temp_dir
+        config_params["experiment"] = "test"
+        config_params["dataset_names"] = ["test1"]
+        config_params["num_steps"] = 20
+        config_params["dataset_sample_probs"] = [1.0]
+        config_params["num_validation"] = [2]
+        config_params["num_test"] = [2]
+        config_params["batch_size"] = 2
+        config_params["test"] = True
+        config_params["weight_decay"] = 1e-4
+        config_params["snap_steps"] = 5
+        config_params["val_steps"] = 5
 
-        trainer = ModelBuilder(params)
+        trainer = ModelBuilder(config_params)
         trainer.train()
 
         # check params.toml is dumped to file and contains the created paths
-        assert "params.toml" in os.listdir(trainer.params["model_dir"])
-        loaded_params = toml.load(os.path.join(trainer.params["model_dir"], "params.toml"))
+        assert "params.toml" in os.listdir(trainer.config_params["model_dir"])
+        loaded_params = toml.load(os.path.join(trainer.config_params["model_dir"], "params.toml"))
         for key in ["model_dir", "log_dir", "model_path"]:
             assert key in list(loaded_params.keys())
 
         # check if model can be loaded from file
         trainer.model = None
-        trainer.load_model(trainer.params["model_path"])
+        trainer.load_model(trainer.config_params["model_path"])
         assert isinstance(trainer.model, tf.keras.Model)
 
 
-def test_tensorboard_callbacks():
+def test_tensorboard_callbacks(config_params):
     with tempfile.TemporaryDirectory() as temp_dir:
         data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
         data_prep.tf_record_path = temp_dir
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
-        params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = [tf_record_path]
-        params["path"] = temp_dir
-        params["experiment"] = "test"
-        params["dataset_names"] = ["test1"]
-        params["num_steps"] = 6
-        params["dataset_sample_probs"] = [1.0]
-        params["num_validation"] = [2]
-        params["num_test"] = [2]
-        params["batch_size"] = 2
-        params["test"] = True
-        params["weight_decay"] = 1e-4
-        params["snap_steps"] = 5
-        params["val_steps"] = 5
+        config_params["record_path"] = [tf_record_path]
+        config_params["path"] = temp_dir
+        config_params["experiment"] = "test"
+        config_params["dataset_names"] = ["test1"]
+        config_params["num_steps"] = 6
+        config_params["dataset_sample_probs"] = [1.0]
+        config_params["num_validation"] = [2]
+        config_params["num_test"] = [2]
+        config_params["batch_size"] = 2
+        config_params["test"] = True
+        config_params["weight_decay"] = 1e-4
+        config_params["snap_steps"] = 5
+        config_params["val_steps"] = 5
 
-        trainer = ModelBuilder(params)
+        trainer = ModelBuilder(config_params)
         trainer.train()
 
         # check if loss history is written to file
-        assert "tfevents" in os.listdir(trainer.params["log_dir"])[0]
+        assert "tfevents" in os.listdir(trainer.config_params["log_dir"])[0]
 
         # check if model checkpoint is written to file
-        assert os.path.split(trainer.params["model_path"])[-1] in os.listdir(
-            trainer.params["model_dir"]
+        assert os.path.split(trainer.config_params["model_path"])[-1] in os.listdir(
+            trainer.config_params["model_dir"]
         )
 
 
-def test_predict():
+def test_predict(config_params):
     with tempfile.TemporaryDirectory() as temp_dir:
         data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
         data_prep.tf_record_path = temp_dir
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
-        params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = [tf_record_path]
-        params["path"] = temp_dir
-        params["experiment"] = "test"
-        params["dataset_names"] = ["test1"]
-        params["num_steps"] = 20
-        params["dataset_sample_probs"] = [1.0]
-        params["num_validation"] = [2]
-        params["num_test"] = [2]
-        params["batch_size"] = 2
-        params["test"] = True
-        params["snap_steps"] = 5000
-        params["val_steps"] = 5000
+        config_params["record_path"] = [tf_record_path]
+        config_params["path"] = temp_dir
+        config_params["experiment"] = "test"
+        config_params["dataset_names"] = ["test1"]
+        config_params["num_steps"] = 20
+        config_params["dataset_sample_probs"] = [1.0]
+        config_params["num_validation"] = [2]
+        config_params["num_test"] = [2]
+        config_params["batch_size"] = 2
+        config_params["test"] = True
+        config_params["snap_steps"] = 5000
+        config_params["val_steps"] = 5000
 
-        trainer = ModelBuilder(params)
+        trainer = ModelBuilder(config_params)
         trainer.train()
         val_dset = trainer.validation_datasets[0].map(
             trainer.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
@@ -318,67 +310,65 @@ def test_predict():
         assert predictions.shape == (1, 256, 256, 1)
 
 
-def test_predict_dataset():
+def test_predict_dataset(config_params):
     with tempfile.TemporaryDirectory() as temp_dir:
         data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
         data_prep.tf_record_path = temp_dir
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
-        params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = [tf_record_path]
-        params["path"] = temp_dir
-        params["experiment"] = "test"
-        params["dataset_names"] = ["test1"]
-        params["num_steps"] = 2
-        params["dataset_sample_probs"] = [1.0]
-        params["num_validation"] = [2]
-        params["num_test"] = [2]
-        params["batch_size"] = 2
-        params["snap_steps"] = 5000
-        params["val_steps"] = 5000
-        trainer = ModelBuilder(params)
+        config_params["record_path"] = [tf_record_path]
+        config_params["path"] = temp_dir
+        config_params["experiment"] = "test"
+        config_params["dataset_names"] = ["test1"]
+        config_params["num_steps"] = 2
+        config_params["dataset_sample_probs"] = [1.0]
+        config_params["num_validation"] = [2]
+        config_params["num_test"] = [2]
+        config_params["batch_size"] = 2
+        config_params["snap_steps"] = 5000
+        config_params["val_steps"] = 5000
+        trainer = ModelBuilder(config_params)
         trainer.train()
         val_dset = trainer.validation_datasets[0]
         single_example_list = trainer.predict_dataset(val_dset)
 
         # check if predict returns a list with the right number of items
-        assert [len(single_example_list)] == params["num_validation"]
+        assert [len(single_example_list)] == config_params["num_validation"]
 
         # check if params were saved to file
-        assert "params.toml" in os.listdir(params["model_dir"])
+        assert "params.toml" in os.listdir(config_params["model_dir"])
 
         # check if examples get serialized correctly
         single_example_list = trainer.predict_dataset(val_dset, save_predictions=True)
         params = trainer.params
-        for i in range(params["num_validation"][0]):
-            assert str(i).zfill(4) + "_pred.hdf" in list(os.listdir(params["eval_dir"]))
+        for i in range(config_params["num_validation"][0]):
+            assert str(i).zfill(4) + "_pred.hdf" in list(os.listdir(config_params["eval_dir"]))
 
-        with h5py.File(os.path.join(params["eval_dir"], str(0).zfill(4) + "_pred.hdf"), "r") as f:
+        with h5py.File(os.path.join(config_params["eval_dir"], str(0).zfill(4) + "_pred.hdf"), "r") as f:
             assert f["prediction"].shape == (256, 256, 1)
             assert f["marker_activity_mask"].shape == (256, 256, 1)
             assert set(list(f.keys())) == set(list(single_example_list[0].keys()))
 
 
-def test_add_weight_decay():
+def test_add_weight_decay(config_params):
     with tempfile.TemporaryDirectory() as temp_dir:
         data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
         data_prep.tf_record_path = temp_dir
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
-        params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = [tf_record_path]
-        params["path"] = temp_dir
-        params["experiment"] = "test"
-        params["dataset_names"] = ["test1"]
-        params["num_steps"] = 20
-        params["dataset_sample_probs"] = [1.0]
-        params["num_validation"] = [2]
-        params["num_test"] = [2]
-        params["batch_size"] = 2
-        params["test"] = True
-        params["weight_decay"] = 1e-3
+        config_params["record_path"] = [tf_record_path]
+        config_params["path"] = temp_dir
+        config_params["experiment"] = "test"
+        config_params["dataset_names"] = ["test1"]
+        config_params["num_steps"] = 20
+        config_params["dataset_sample_probs"] = [1.0]
+        config_params["num_validation"] = [2]
+        config_params["num_test"] = [2]
+        config_params["batch_size"] = 2
+        config_params["test"] = True
+        config_params["weight_decay"] = 1e-3
 
-        trainer = ModelBuilder(params)
+        trainer = ModelBuilder(config_params)
         trainer.prep_model()
 
         # check if weight decay is added to the model losses
@@ -386,14 +376,14 @@ def test_add_weight_decay():
 
         # check if loss is higher with weight decay than without weight decay
         tf.random.set_seed(42)
-        trainer = ModelBuilder(params)
+        trainer = ModelBuilder(config_params)
         trainer.prep_data()
         trainer.prep_model()
         loss_with_weight_decay = trainer.validate(trainer.validation_datasets[0])
 
-        params["weight_decay"] = False
+        config_params["weight_decay"] = False
         tf.random.set_seed(42)
-        trainer_no_decay = ModelBuilder(params)
+        trainer_no_decay = ModelBuilder(config_params)
         trainer_no_decay.prep_data()
         trainer_no_decay.prep_model()
         loss_without_weight_decay = trainer_no_decay.validate(trainer.validation_datasets[0])
@@ -401,30 +391,29 @@ def test_add_weight_decay():
         assert loss_with_weight_decay > loss_without_weight_decay
 
 
-def test_quantile_filter():
+def test_quantile_filter(config_params):
     with tempfile.TemporaryDirectory() as temp_dir:
         data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
         data_prep.tf_record_path = temp_dir
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
-        params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = [tf_record_path]
-        params["path"] = temp_dir
-        params["experiment"] = "test"
-        params["dataset_names"] = ["test1"]
-        params["num_steps"] = 20
-        params["dataset_sample_probs"] = [1.0]
-        params["num_validation"] = [0]
-        params["num_test"] = [0]
-        params["batch_size"] = 1
-        trainer = ModelBuilder(params)
+        config_params["record_path"] = [tf_record_path]
+        config_params["path"] = temp_dir
+        config_params["experiment"] = "test"
+        config_params["dataset_names"] = ["test1"]
+        config_params["num_steps"] = 20
+        config_params["dataset_sample_probs"] = [1.0]
+        config_params["num_validation"] = [0]
+        config_params["num_test"] = [0]
+        config_params["batch_size"] = 1
+        trainer = ModelBuilder(config_params)
         trainer.prep_data()
         unfiltered_num_cells = []
         for example in trainer.train_dataset:
             df = pd.read_json(example["activity_df"].numpy()[0].decode())
             unfiltered_num_cells.append(np.sum(df.activity))
-        params["filter_quantile"] = 0.8
-        trainer = ModelBuilder(params)
+        config_params["filter_quantile"] = 0.8
+        trainer = ModelBuilder(config_params)
         trainer.prep_data()
         filtered_num_cells = []
         for example in trainer.train_dataset:
@@ -449,25 +438,24 @@ def test_quantile_filter():
         assert np.array_equal(sorted(num_pos_dict["CD4"]), sorted(unfiltered_num_cells))
 
 
-def test_gen_prep_batches_fn():
+def test_gen_prep_batches_fn(config_params):
     with tempfile.TemporaryDirectory() as temp_dir:
         data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
         data_prep.tf_record_path = temp_dir
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
-        params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = [tf_record_path]
-        params["path"] = temp_dir
-        params["batch_constituents"] = ["mplex_img", "binary_mask", "nuclei_img", "membrane_img"]
-        params["experiment"] = "test"
-        params["dataset_names"] = ["test1"]
-        params["num_steps"] = 20
-        params["dataset_sample_probs"] = [1.0]
-        params["batch_size"] = 1
-        params["test"] = True
-        params["num_validation"] = [2]
-        params["num_test"] = [2]
-        trainer = ModelBuilder(params)
+        config_params["record_path"] = [tf_record_path]
+        config_params["path"] = temp_dir
+        config_params["batch_constituents"] = ["mplex_img", "binary_mask", "nuclei_img", "membrane_img"]
+        config_params["experiment"] = "test"
+        config_params["dataset_names"] = ["test1"]
+        config_params["num_steps"] = 20
+        config_params["dataset_sample_probs"] = [1.0]
+        config_params["batch_size"] = 1
+        config_params["test"] = True
+        config_params["num_validation"] = [2]
+        config_params["num_test"] = [2]
+        trainer = ModelBuilder(config_params)
         trainer.prep_data()
         example = next(iter(trainer.train_dataset))
         prep_batches_4 = trainer.prep_batches
@@ -490,23 +478,22 @@ def test_gen_prep_batches_fn():
         )
 
 
-def test_fov_filter():
+def test_fov_filter(config_params):
     with tempfile.TemporaryDirectory() as temp_dir:
         data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
         data_prep.tf_record_path = temp_dir
         data_prep.make_tf_record()
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
-        params = toml.load("cell_classification/configs/params.toml")
-        params["record_path"] = [tf_record_path]
-        params["path"] = temp_dir
-        params["experiment"] = "test"
-        params["dataset_names"] = ["test1"]
-        params["num_steps"] = 20
-        params["dataset_sample_probs"] = [1.0]
-        params["batch_size"] = 1
+        config_params["record_path"] = [tf_record_path]
+        config_params["path"] = temp_dir
+        config_params["experiment"] = "test"
+        config_params["dataset_names"] = ["test1"]
+        config_params["num_steps"] = 20
+        config_params["dataset_sample_probs"] = [1.0]
+        config_params["batch_size"] = 1
         # prepare data splits json and add to params
         split = {"train": ["fov_0", "fov_1", "fov_2"], "validation": ["fov_3"], "test": ["fov_4"]}
-        trainer = ModelBuilder(params)
+        trainer = ModelBuilder(config_params)
         dataset = tf.data.TFRecordDataset(tf_record_path)
         dataset = dataset.map(lambda x: tf.io.parse_single_example(x, feature_description))
         dataset = dataset.map(parse_dict)
