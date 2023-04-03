@@ -30,7 +30,7 @@ dependencies = [
 ]
 name = "cell_classification"
 authors = [{ name = "Angelo Lab", email = "theangelolab@gmail.com" }]
-description = "Toolbox for analysis on segmented images from MIBI"
+description = "Cell classification tool for classifying cells into marker positive and negative for arbitrary markers."
 readme = "README.md"
 requires-python = ">=3.9"
 license = { text = "Modified Apache License 2.0" }

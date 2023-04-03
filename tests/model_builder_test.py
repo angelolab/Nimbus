@@ -2,7 +2,7 @@ import pytest
 import tempfile
 import numpy as np
 import tensorflow as tf
-from .segmentation_data_prep_test import prep_object_and_inputs
+from segmentation_data_prep_test import prep_object_and_inputs
 from cell_classification.segmentation_data_prep import parse_dict, feature_description
 import os
 import toml

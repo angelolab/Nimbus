@@ -1,4 +1,4 @@
-from .segmentation_data_prep_test import prep_object_and_inputs
+from segmentation_data_prep_test import prep_object_and_inputs
 from cell_classification.model_builder import ModelBuilder
 import tempfile
 import toml
