@@ -1,16 +1,16 @@
 import argparse
-import toml
-import ast
 import os
 import pickle
-import pandas as pd
-import numpy as np
-from metrics import load_model, calc_roc, average_roc, calc_metrics
-from plot_utils import plot_average_roc, plot_metrics_against_threshold, subset_plots
-from plot_utils import heatmap_plot, plot_together
-import tensorflow as tf
-from segmentation_data_prep import parse_dict, feature_description
 
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+import toml
+from metrics import average_roc, calc_metrics, calc_roc, load_model
+from plot_utils import (heatmap_plot, plot_average_roc,
+                        plot_metrics_against_threshold, plot_together,
+                        subset_plots)
+from segmentation_data_prep import feature_description, parse_dict
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

@@ -1,16 +1,12 @@
-import h5py
-import toml
-import argparse
-import pickle
 import os
-from sklearn.metrics import roc_curve, auc, confusion_matrix
-from model_builder import ModelBuilder
-import numpy as np
-import toml
 from copy import deepcopy
-from joblib import Parallel, delayed
+
+import h5py
+import numpy as np
 import pandas as pd
+from model_builder import ModelBuilder
 from promix_naive import PromixNaive
+from sklearn.metrics import auc, confusion_matrix, roc_curve
 
 
 def load_model(params):

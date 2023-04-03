@@ -1,17 +1,17 @@
-from ast import arg
+import argparse
 import os
-import matplotlib.pyplot as plt
+
 import matplotlib.patches as mpatches
-from matplotlib.colors import LinearSegmentedColormap
-from segmentation_data_prep import parse_dict, feature_description
-import tensorflow as tf
-from skimage.segmentation import find_boundaries
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import argparse
-from tqdm import tqdm
-from metrics import calc_scores
 import seaborn as sns
+import tensorflow as tf
+from matplotlib.colors import LinearSegmentedColormap
+from metrics import calc_scores
+from segmentation_data_prep import feature_description, parse_dict
+from skimage.segmentation import find_boundaries
+from tqdm import tqdm
 
 
 def segmentation_to_boundaries(labels):

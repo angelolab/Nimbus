@@ -1,11 +1,14 @@
-from .segmentation_data_prep_test import prep_object_and_inputs
-from cell_classification.promix_naive import PromixNaive
-import toml
+import os
 import tempfile
+
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-import os
+import toml
+
+from cell_classification.promix_naive import PromixNaive
+
+from .segmentation_data_prep_test import prep_object_and_inputs
 
 
 def test_reduce_to_cells():

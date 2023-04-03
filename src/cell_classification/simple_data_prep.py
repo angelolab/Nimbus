@@ -1,4 +1,5 @@
 import pandas as pd
+
 from .segmentation_data_prep import SegmentationTFRecords
 
 
@@ -114,4 +115,3 @@ class SimpleTFRecords(SegmentationTFRecords):
 
     def check_additional_inputs(self):
         """Checks additional inputs for correctness"""
-        pass

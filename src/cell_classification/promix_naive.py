@@ -1,18 +1,14 @@
-from deepcell.utils.train_utils import rate_scheduler, get_callbacks, count_gpus
-from segmentation_data_prep import parse_dict, feature_description
-from tensorflow.keras.optimizers.schedules import CosineDecay
-from tensorflow.keras.callbacks import LearningRateScheduler
-from augmentation_pipeline import prepare_keras_aug, MixUp
-from tensorflow.keras.optimizers import SGD, Adam
-from semantic_head import create_semantic_head
-from model_builder import ModelBuilder
-import tensorflow as tf
-from tqdm import tqdm
-import pandas as pd
-import numpy as np
 import argparse
-import toml
 import os
+
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+import toml
+from augmentation_pipeline import MixUp, prepare_keras_aug
+from deepcell.utils.train_utils import count_gpus
+from model_builder import ModelBuilder
+from tqdm import tqdm
 
 
 class PromixNaive(ModelBuilder):

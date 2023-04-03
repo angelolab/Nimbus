@@ -1,24 +1,24 @@
-import os
 import argparse
+import json
+import os
+from time import time
+
+import h5py
+import numpy as np
+import pandas as pd
 import tensorflow as tf
 import toml
-from augmentation_pipeline import prepare_tf_aug, py_aug, get_augmentation_pipeline
-from post_processing import merge_activity_df, process_to_cells
-from segmentation_data_prep import parse_dict, feature_description
+from augmentation_pipeline import (get_augmentation_pipeline, prepare_tf_aug,
+                                   py_aug)
 from deepcell.model_zoo.panopticnet import PanopticNet
-from tensorflow.keras.optimizers import SGD, Adam
-from tensorflow.keras.optimizers.schedules import CosineDecay
-from deepcell.utils.train_utils import rate_scheduler, get_callbacks, count_gpus
-from deepcell import losses
-from semantic_head import create_semantic_head
-from tqdm import tqdm
-import numpy as np
-import h5py
-import pandas as pd
+from deepcell.utils.train_utils import count_gpus
 from loss import Loss
+from post_processing import merge_activity_df, process_to_cells
+from segmentation_data_prep import feature_description, parse_dict
+from semantic_head import create_semantic_head
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.optimizers.schedules import CosineDecay
 from tqdm import tqdm
-from time import time
-import json
 
 
 class ModelBuilder:

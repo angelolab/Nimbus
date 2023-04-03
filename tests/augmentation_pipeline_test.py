@@ -1,12 +1,14 @@
-import pytest
-import numpy as np
-from cell_classification.augmentation_pipeline import augment_images, get_augmentation_pipeline, prepare_tf_aug, py_aug
-from cell_classification.augmentation_pipeline import prepare_keras_aug, Flip, Rot90, GaussianNoise, GaussianBlur, Zoom
-from cell_classification.augmentation_pipeline import LinearContrast, MixUp
-import tensorflow as tf
-import imgaug.augmenters as iaa
-import tensorflow as tf
 from copy import deepcopy
+
+import imgaug.augmenters as iaa
+import numpy as np
+import pytest
+import tensorflow as tf
+
+from cell_classification.augmentation_pipeline import (
+    Flip, GaussianBlur, GaussianNoise, LinearContrast, MixUp, Rot90, Zoom,
+    augment_images, get_augmentation_pipeline, prepare_keras_aug,
+    prepare_tf_aug, py_aug)
 
 parametrize = pytest.mark.parametrize
 

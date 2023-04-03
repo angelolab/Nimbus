@@ -1,13 +1,19 @@
-from cell_classification.segmentation_data_prep import parse_dict, feature_description
-from .segmentation_data_prep_test import prep_object_and_inputs
-import pytest
-import tempfile
-from cell_classification.plot_utils import plot_overlay, plot_together, plot_average_roc, subset_plots, heatmap_plot
-from cell_classification.plot_utils import plot_metrics_against_threshold, subset_activity_df, collapse_activity_dfs
-from metrics_test import make_pred_list
-from cell_classification.metrics import calc_roc, average_roc, calc_metrics
 import os
+import tempfile
+
 import tensorflow as tf
+from metrics_test import make_pred_list
+
+from cell_classification.metrics import average_roc, calc_metrics, calc_roc
+from cell_classification.plot_utils import (collapse_activity_dfs,
+                                            heatmap_plot, plot_average_roc,
+                                            plot_metrics_against_threshold,
+                                            plot_overlay, plot_together,
+                                            subset_activity_df, subset_plots)
+from cell_classification.segmentation_data_prep import (feature_description,
+                                                        parse_dict)
+
+from .segmentation_data_prep_test import prep_object_and_inputs
 
 
 def prepare_dataset(temp_dir):

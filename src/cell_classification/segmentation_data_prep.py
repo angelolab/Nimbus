@@ -1,16 +1,16 @@
-from tifffile import imread
-from skimage.segmentation import find_boundaries
-import tensorflow as tf
+import copy
+import json
+import os
+
+import cv2
 import numpy as np
 import pandas as pd
-import os
-from tqdm import tqdm
-import json
-from alpineer.misc_utils import verify_in_list
+import tensorflow as tf
 from alpineer.io_utils import list_folders, validate_paths
-import copy
-import multiprocessing as mp
-import cv2
+from alpineer.misc_utils import verify_in_list
+from skimage.segmentation import find_boundaries
+from tifffile import imread
+from tqdm import tqdm
 
 
 class SegmentationTFRecords:

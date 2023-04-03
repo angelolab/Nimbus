@@ -1,12 +1,15 @@
-from .segmentation_data_prep_test import prep_object_and_inputs
-from cell_classification.model_builder import ModelBuilder
-import tempfile
-import toml
 import os
-from cell_classification.metrics import calc_roc, calc_metrics, average_roc, HDF5Loader
+import tempfile
+
 import numpy as np
 import pandas as pd
-import tensorflow as tf
+import toml
+
+from cell_classification.metrics import (HDF5Loader, average_roc, calc_metrics,
+                                         calc_roc)
+from cell_classification.model_builder import ModelBuilder
+
+from .segmentation_data_prep_test import prep_object_and_inputs
 
 
 def make_pred_list():

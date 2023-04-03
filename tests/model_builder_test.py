@@ -1,15 +1,18 @@
-import pytest
-import tempfile
-import numpy as np
-import tensorflow as tf
-from .segmentation_data_prep_test import prep_object_and_inputs
-from cell_classification.segmentation_data_prep import parse_dict, feature_description
-import os
-import toml
-from cell_classification.model_builder import ModelBuilder
-import h5py
-import pandas as pd
 import json
+import os
+import tempfile
+
+import h5py
+import numpy as np
+import pandas as pd
+import tensorflow as tf
+import toml
+
+from cell_classification.model_builder import ModelBuilder
+from cell_classification.segmentation_data_prep import (feature_description,
+                                                        parse_dict)
+
+from .segmentation_data_prep_test import prep_object_and_inputs
 
 tf.config.run_functions_eagerly(True)
 

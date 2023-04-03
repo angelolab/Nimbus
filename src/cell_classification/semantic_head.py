@@ -1,10 +1,8 @@
-from tensorflow.keras.layers import Conv2D, Conv3D
-from tensorflow.keras import backend as K
-from tensorflow.keras.layers import Activation
-from tensorflow.keras.layers import BatchNormalization
-from deepcell.utils.misc_utils import get_sorted_keys
 from deepcell.model_zoo.fpn import semantic_upsample
-from tensorflow.keras.layers import Softmax
+from deepcell.utils.misc_utils import get_sorted_keys
+from tensorflow.keras import backend as K
+from tensorflow.keras.layers import (Activation, BatchNormalization, Conv2D,
+                                     Conv3D, Softmax)
 
 
 def create_semantic_head(

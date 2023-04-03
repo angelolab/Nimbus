@@ -1,6 +1,8 @@
-from cell_classification.post_processing import process_to_cells, merge_activity_df
 import numpy as np
 import pandas as pd
+
+from cell_classification.post_processing import (merge_activity_df,
+                                                 process_to_cells)
 
 
 def test_process_to_cells():

@@ -1,6 +1,7 @@
-from cell_classification.loss import Loss
 import numpy as np
 import tensorflow as tf
+
+from cell_classification.loss import Loss
 
 
 def test_loss():

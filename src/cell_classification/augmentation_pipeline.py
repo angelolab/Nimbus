@@ -1,10 +1,10 @@
-import imgaug as ia
 import imgaug.augmenters as iaa
-from imgaug.augmentables.segmaps import SegmentationMapsOnImage
-from imgaug.augmentables.batches import Batch
 import numpy as np
 import tensorflow as tf
-from keras.layers.preprocessing.image_preprocessing import transform, get_zoom_matrix
+from imgaug.augmentables.batches import Batch
+from imgaug.augmentables.segmaps import SegmentationMapsOnImage
+from keras.layers.preprocessing.image_preprocessing import (get_zoom_matrix,
+                                                            transform)
 
 
 def augment_images(images, masks, augmentation_pipeline):

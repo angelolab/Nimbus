@@ -1,13 +1,17 @@
+import copy
+import json
 import os
-import pytest
 import tempfile
+
 import numpy as np
 import pandas as pd
-import json
-from tifffile import imwrite, imread
-from cell_classification.segmentation_data_prep import SegmentationTFRecords, feature_description, parse_dict
-import copy
+import pytest
 import tensorflow as tf
+from tifffile import imread, imwrite
+
+from cell_classification.segmentation_data_prep import (SegmentationTFRecords,
+                                                        feature_description,
+                                                        parse_dict)
 
 
 def prep_object(
