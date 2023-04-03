@@ -23,17 +23,16 @@ jobs:
           fetch-depth: 0
 
       - name: Build Wheels
-        uses: pypa/cibuildwheel@v2.12.1
-        with:
-          package-dir: .
-          output-dir: wheelhouse
-          config-file: "{package}/pyproject.toml"
+        run: pipx run build --wheel
+
+      - name: Check wheel Metadata
+        run: pipx run twine check dist/*
 
       - name: Store Wheel Artifacts
         uses: actions/upload-artifact@v3
         with:
           name: distributions
-          path: wheelhouse/*.whl
+          path: dist/*.whl
 
   build_sdist:
     name:  Source Distribution

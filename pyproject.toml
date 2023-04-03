@@ -60,61 +60,6 @@ test = [
 version_scheme = "release-branch-semver"
 local_scheme = "no-local-version"
 
-[tool.cibuildwheel]
-build = ["cp38-*"]
-skip = [
-    "macosx_arm64",  # arm64 MacOS Builds, TF2 has no wheels for Apple Silicon
-    "cp36-*",        # Python 3.6
-    "cp37-*",        # Python 3.7
-    "cp39-*",        # Python 3.9
-    "cp310-*",       # Python 3.10
-    "cp311-*",       # Python 3.11
-    "*-musllinux_*", # Musllinux
-    "pp*",           # PyPy wheels on all platforms
-    "*_i686",        # 32bit Linux Wheels
-    "*_s390x",       # IBM System/390, "mainframe"
-    "*-win32",       # 32bit Windows Wheels
-    "*_ppc64le",     # PowerPC
-]
-
-# Run tests
-# test-extras = ["test"]
-# test-command = "pytest {project}/tests"
-build-frontend = "build"
-build-verbosity = 3
-
-# Avoid testing on emulated architectures
-test-skip = [
-    "*-win_arm64",               # Skip testing emulated arm64 biulds on Windows
-    "*-*linux_aarch64",          # Skip testing emulated Linux builds
-    "*-macosx_arm64",            # Skip testing emulated arm64 builds on Intel Macs
-    "*-macosx_universal2:arm64", # Skip testing emulated arm64 portion of universal2 builds
-]
-
-# "manylinux" versioning
-# PEP 600: https://peps.python.org/pep-0600/
-# Build using the manylinux_2_28 image
-manylinux-x86_64-image = "manylinux_2_28"
-manylinux-aarch64-image = "manylinux_2_28"
-
-
-# On an Linux Intel runner with qemu installed, build Intel and aarch64 (arm) wheels
-[tool.cibuildwheel.linux]
-archs = ["x86_64", "aarch64"]
-repair-wheel-command = "auditwheel repair -w {dest_dir} {wheel}"
-
-# Build `universal2` and `arm64` wheels on an Intel runner.
-# Note that the `arm64` wheel and the `arm64` part of the `universal2` wheel cannot be tested in this configuration.
-[tool.cibuildwheel.macos]
-archs = ["x86_64", "arm64", "universal2"]
-repair-wheel-command = "delocate-wheel --require-archs {delocate_archs} -w {dest_dir} -v {wheel}"
-
-# Build for Windows x86_64, and ARM 64
-[tool.cibuildwheel.windows]
-archs = ["AMD64", "ARM64"]
-# might not need to repair with delvewheel?
-# before-build = "pip install delvewheel"                          # Use delvewheel on windows
-# repair-wheel-command = "delvewheel repair -w {dest_dir} {wheel}"
 
 # Coverage
 [tool.coverage.paths]
