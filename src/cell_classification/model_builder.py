@@ -8,17 +8,20 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import toml
-from augmentation_pipeline import (get_augmentation_pipeline, prepare_tf_aug,
-                                   py_aug)
 from deepcell.model_zoo.panopticnet import PanopticNet
 from deepcell.utils.train_utils import count_gpus
-from loss import Loss
-from post_processing import merge_activity_df, process_to_cells
-from segmentation_data_prep import feature_description, parse_dict
-from semantic_head import create_semantic_head
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.optimizers.schedules import CosineDecay
 from tqdm import tqdm
+
+from cell_classification.augmentation_pipeline import (
+    get_augmentation_pipeline, prepare_tf_aug, py_aug)
+from cell_classification.loss import Loss
+from cell_classification.post_processing import (merge_activity_df,
+                                                 process_to_cells)
+from cell_classification.segmentation_data_prep import (feature_description,
+                                                        parse_dict)
+from cell_classification.semantic_head import create_semantic_head
 
 
 class ModelBuilder:
