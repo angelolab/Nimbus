@@ -26,6 +26,7 @@ dependencies = [
     "tables>=3",
     "h5py>=3.7",
     "seaborn>=0.12",
+    "alpineer>=0.1.5"
 ]
 name = "cell_classification"
 authors = [{ name = "Angelo Lab", email = "theangelolab@gmail.com" }]
@@ -74,7 +75,6 @@ exclude_lines = [
     "except ImportError",
     "raise AssertionError",
     "raise NotImplementedError",
-    "(ArrowInvalid, OSError, IOError)",
 ]
 
 # Pytest Options

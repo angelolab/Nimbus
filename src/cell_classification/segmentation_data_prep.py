@@ -6,7 +6,7 @@ import pandas as pd
 import os
 from tqdm import tqdm
 import json
-from utils import verify_in_list, list_folders, validate_paths
+from alpineer.misc_utils import verify_in_list, list_folders, validate_paths
 import copy
 import multiprocessing as mp
 import cv2
