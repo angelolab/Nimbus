@@ -6,11 +6,14 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import toml
-from metrics import average_roc, calc_metrics, calc_roc, load_model
-from plot_utils import (heatmap_plot, plot_average_roc,
-                        plot_metrics_against_threshold, plot_together,
-                        subset_plots)
-from segmentation_data_prep import feature_description, parse_dict
+
+from cell_classification.metrics import (average_roc, calc_metrics, calc_roc,
+                                         load_model)
+from cell_classification.plot_utils import (heatmap_plot, plot_average_roc,
+                                            plot_metrics_against_threshold,
+                                            plot_together, subset_plots)
+from cell_classification.segmentation_data_prep import (feature_description,
+                                                        parse_dict)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

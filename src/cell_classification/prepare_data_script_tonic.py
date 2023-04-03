@@ -1,6 +1,6 @@
 import os
 
-from segmentation_data_prep import SegmentationTFRecords
+from cell_classification.segmentation_data_prep import SegmentationTFRecords
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 

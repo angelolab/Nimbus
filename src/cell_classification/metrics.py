@@ -4,9 +4,10 @@ from copy import deepcopy
 import h5py
 import numpy as np
 import pandas as pd
-from model_builder import ModelBuilder
-from promix_naive import PromixNaive
 from sklearn.metrics import auc, confusion_matrix, roc_curve
+
+from cell_classification.model_builder import ModelBuilder
+from cell_classification.promix_naive import PromixNaive
 
 
 def load_model(params):

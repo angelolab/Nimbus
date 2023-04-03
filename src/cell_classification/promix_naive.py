@@ -5,10 +5,11 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import toml
-from augmentation_pipeline import MixUp, prepare_keras_aug
 from deepcell.utils.train_utils import count_gpus
-from model_builder import ModelBuilder
 from tqdm import tqdm
+
+from cell_classification.augmentation_pipeline import MixUp, prepare_keras_aug
+from cell_classification.model_builder import ModelBuilder
 
 
 class PromixNaive(ModelBuilder):

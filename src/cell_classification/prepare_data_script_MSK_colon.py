@@ -1,6 +1,6 @@
 import os
 
-from simple_data_prep import SimpleTFRecords
+from cell_classification.simple_data_prep import SimpleTFRecords
 
 os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 
