@@ -246,7 +246,8 @@ def test_gen_prep_batches_promix_fn(config_params):
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
         config_params["record_path"] = [tf_record_path]
         config_params["path"] = temp_dir
-        config_params["batch_constituents"] = ["mplex_img", "binary_mask", "nuclei_img", "membrane_img"]
+        config_params["batch_constituents"] = ["mplex_img", "binary_mask", "nuclei_img",
+                                               "membrane_img"]
         config_params["experiment"] = "test"
         config_params["dataset_names"] = ["test1"]
         config_params["num_steps"] = 20

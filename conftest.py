@@ -4,7 +4,7 @@ import pytest
 import toml
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def config_params() -> Iterator[Dict]:
     params: Dict[str, Any] = toml.load("./configs/params.toml")
     yield params

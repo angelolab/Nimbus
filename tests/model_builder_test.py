@@ -210,7 +210,7 @@ def test_train(config_params):
         data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
         data_prep.tf_record_path = temp_dir
         data_prep.make_tf_record()
-        tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
+        tf_record_path = os.path.join(data_prep.tf_orecord_path, data_prep.dataset + ".tfrecord")
         config_params["record_path"] = [tf_record_path]
         config_params["path"] = temp_dir
         config_params["experiment"] = "test"
@@ -343,8 +343,8 @@ def test_predict_dataset(config_params):
         params = trainer.params
         for i in range(config_params["num_validation"][0]):
             assert str(i).zfill(4) + "_pred.hdf" in list(os.listdir(config_params["eval_dir"]))
-
-        with h5py.File(os.path.join(config_params["eval_dir"], str(0).zfill(4) + "_pred.hdf"), "r") as f:
+        eval_dir = os.path.join(config_params["eval_dir"], str(0).zfill(4) + "_pred.hdf")
+        with h5py.File(eval_dir, "r") as f:
             assert f["prediction"].shape == (256, 256, 1)
             assert f["marker_activity_mask"].shape == (256, 256, 1)
             assert set(list(f.keys())) == set(list(single_example_list[0].keys()))
@@ -446,7 +446,8 @@ def test_gen_prep_batches_fn(config_params):
         tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
         config_params["record_path"] = [tf_record_path]
         config_params["path"] = temp_dir
-        config_params["batch_constituents"] = ["mplex_img", "binary_mask", "nuclei_img", "membrane_img"]
+        config_params["batch_constituents"] = ["mplex_img", "binary_mask", "nuclei_img",
+                                               "membrane_img"]
         config_params["experiment"] = "test"
         config_params["dataset_names"] = ["test1"]
         config_params["num_steps"] = 20
