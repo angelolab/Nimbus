@@ -55,4 +55,4 @@ jobs:
         uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          file: ${{ github.workspace }}/coverage/coverage.lcov
+          # file: ${{ github.workspace }}/coverage/coverage.lcov
