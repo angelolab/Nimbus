@@ -210,7 +210,7 @@ def test_train(config_params):
         data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
         data_prep.tf_record_path = temp_dir
         data_prep.make_tf_record()
-        tf_record_path = os.path.join(data_prep.tf_orecord_path, data_prep.dataset + ".tfrecord")
+        tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
         config_params["record_path"] = [tf_record_path]
         config_params["path"] = temp_dir
         config_params["experiment"] = "test"
