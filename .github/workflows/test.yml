@@ -30,15 +30,10 @@ jobs:
       - name: Run Tests
         run: |
           pytest
-
-      - name: Upload Coverage to Coveralls
-        uses: coverallsapp/github-action@v2
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
   
-      # - name: Archive Coverage
-      #   uses: actions/upload-artifact@v3
-      #   with:
-      #     name: coverage
-      #     path: |
-      #       coverage.lcov
+      - name: Archive Coverage
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage
+          path: |
+            coverage.lcov
