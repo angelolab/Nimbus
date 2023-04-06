@@ -1,0 +1,94 @@
+[build-system]
+requires = [
+    "setuptools",
+    "wheel",
+    "setuptools_scm[toml]>=6.2",
+]
+build-backend = "setuptools.build_meta"
+
+[project]
+dependencies = [
+    "numpy>=1.20",
+    "deepcell>=0.12.5",
+    "tensorflow==2.8",
+    "keras>=2",
+    "spektral>=1",
+    "protobuf==3.20",
+    "scikit-image>=0.16,<0.20",
+    "scikit-learn>=1.2.2",
+    "tifffile>=2023",
+    "tqdm>=4",
+    "imgaug>=0.4.0",
+    "opencv-python>=4.6",
+    "toml",
+    "tables>=3",
+    "h5py>=3.7",
+    "seaborn>=0.12",
+    "alpineer>=0.1.5"
+]
+name = "cell_classification"
+authors = [{ name = "Angelo Lab", email = "theangelolab@gmail.com" }]
+description = "Cell classification tool for classifying cells into marker positive and negative for arbitrary markers."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "Modified Apache License 2.0" }
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "License :: OSI Approved :: Apache Software License",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+dynamic = ["version"]
+urls = { repository = "https://github.com/angelolab/cell_classification" }
+
+[project.optional-dependencies]
+test = [
+    "attrs",
+    "coveralls[toml]",
+    "pytest",
+    "pytest-cases",
+    "pytest-cov",
+    "pytest-mock",
+    "pytest-pycodestyle",
+    "pytest-randomly",
+]
+
+[tool.setuptools_scm]
+version_scheme = "release-branch-semver"
+local_scheme = "no-local-version"
+
+# Coverage
+[tool.coverage.paths]
+source = ["src", "*/site-packages"]
+
+[tool.coverage.run]
+branch = true
+source = ["cell_classification"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "except ImportError",
+    "raise AssertionError",
+    "raise NotImplementedError",
+]
+
+# Pytest Options
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning",
+]
+addopts = [
+    "-v",
+    "-s",
+    "--durations=20",
+    "--randomly-seed=42",
+    "--randomly-dont-reorganize",
+    "--cov=cell_classification",
+    "--cov-report=lcov",
+    "--pycodestyle",
+]
+console_output_style = "count"
+testpaths = ["tests"]

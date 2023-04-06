@@ -1,0 +1,30 @@
+name: Wheel Builder
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read # to fetch code (actions/checkout)
+
+jobs:
+  build:
+    name: Pure Python Wheel and Source Distribution
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout ${{ github.repository }}
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Build Wheels
+        run: pipx run build
+
+      - name: Check wheel Metadata
+        run: pipx run twine check dist/*
+
+      - name: Store Wheel Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: distributions
+          path: dist/*.whl
