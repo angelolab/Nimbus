@@ -64,6 +64,7 @@ def prep_object_and_inputs(
 
 
 def prepare_conversion_matrix():
+    np.random.seed(42)
     conversion_matrix = pd.DataFrame(
         np.random.randint(0, 3, size=(6, 4)).clip(0, 1),
         # np.ones([6,4]),
@@ -75,6 +76,7 @@ def prepare_conversion_matrix():
 
 def test_get_image():
     data_prep = prep_object()
+    np.random.seed(42)
     with tempfile.TemporaryDirectory() as temp_dir:
         test_img_1 = np.random.rand(256, 256)
         test_img_2 = np.random.rand(256, 256, 1)
