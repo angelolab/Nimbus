@@ -8,7 +8,7 @@ import toml
 
 from cell_classification.promix_naive import PromixNaive
 
-from .segmentation_data_prep_test import prep_object_and_inputs
+from segmentation_data_prep_test import prep_object_and_inputs
 
 
 def test_reduce_to_cells(config_params):
@@ -189,7 +189,7 @@ def test_matched_high_confidence_selection(config_params):
     # check that the output is correct and only those cells are selected that have a loss
     # smaller than the threshold
     gt_activity = "positive" if df["activity"].values[0] == 1 else "negative"
-    assert (df.loss.values[0] <= trainer.confidence_loss_thresholds[gt_activity]).numpy()
+    assert (df.loss.values[0] <= trainer.confidence_loss_thresholds[gt_activity])
 
 
 def test_batchwise_loss_selection(config_params):
