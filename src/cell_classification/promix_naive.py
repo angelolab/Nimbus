@@ -83,7 +83,7 @@ class PromixNaive(ModelBuilder):
         targets = tf.constant(np.array([[0, 1]]).transpose())
         y_pred = tf.constant(np.array([[neg_thresh, pos_thresh]]).transpose())
         loss = self.loss_fn(targets, y_pred)
-        self.confidence_loss_thresholds = {"positive": loss[0], "negative": loss[1]}
+        self.confidence_loss_thresholds = {"positive": loss[0].numpy(), "negative": loss[1].numpy()}
 
     @staticmethod  # with @tf.function 0.4 s/batch, without 0.15 s/batch on notebook
     def train_step(model, optimizer, loss_fn, aug_fn, mixup_fn, loss_mask, x_mplex, x_binary, y):
@@ -348,7 +348,7 @@ class PromixNaive(ModelBuilder):
             )
         if negative_df.shape[0] > 0:
             selected_subset.append(
-                negative_df[negative_df.loss < self.confidence_loss_thresholds["negative"]]
+                negative_df[negative_df.loss.values < self.confidence_loss_thresholds["negative"]]
             )
         return selected_subset
 
