@@ -344,12 +344,12 @@ class PromixNaive(ModelBuilder):
         selected_subset = []
         if positive_df.shape[0] > 0:
             selected_subset.append(
-                positive_df[positive_df.loss.to_numpy() < self.confidence_loss_thresholds["positive"].numpy()]
+                positive_df[positive_df.loss.values < self.confidence_loss_thresholds["positive"]]
             )
         if negative_df.shape[0] > 0:
             selected_subset.append(
                 negative_df[negative_df.loss.values < self.confidence_loss_thresholds["negative"]]
-
+            )
         return selected_subset
 
 
