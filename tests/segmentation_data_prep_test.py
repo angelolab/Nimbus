@@ -64,20 +64,20 @@ def prep_object_and_inputs(
 
 
 def prepare_conversion_matrix():
+    np.random.seed(42)
     conversion_matrix = pd.DataFrame(
-        np.random.randint(0, 3, size=(6, 4)).clip(0, 1),
-        # np.ones([6,4]),
+        np.random.randint(0, 2, size=(6, 4)),
         columns=["CD11c", "CD4", "CD56", "CD57"],
         index=["stromal", "FAP", "NK", "CD4", "CD14", "CD163"],
     )
     return conversion_matrix
 
 
-def test_get_image():
+def test_get_image(rng):
     data_prep = prep_object()
     with tempfile.TemporaryDirectory() as temp_dir:
-        test_img_1 = np.random.rand(256, 256)
-        test_img_2 = np.random.rand(256, 256, 1)
+        test_img_1 = rng.uniform(low=0, high=1, size=(256, 256))
+        test_img_2 = rng.uniform(low=0, high=1, size=(256, 256, 1))
         imwrite(os.path.join(temp_dir, "CD8.tiff"), test_img_1)
         imwrite(os.path.join(temp_dir, "CD4.tiff"), test_img_2)
         CD8_img = data_prep.get_image(data_folder=temp_dir, marker="CD8")
@@ -90,8 +90,8 @@ def test_get_image():
 
 
 def prepare_test_data_folders(num_folders, temp_dir, selected_markers, random=False, scale=[1.0]):
-    data_folders = []
     np.random.seed(42)
+    data_folders = []
     if len(scale) != num_folders:
         scale = [1.0] * num_folders
     for i in range(num_folders):
