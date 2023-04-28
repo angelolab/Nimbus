@@ -12,7 +12,7 @@ from cell_classification.model_builder import ModelBuilder
 from cell_classification.segmentation_data_prep import (feature_description,
                                                         parse_dict)
 
-from .segmentation_data_prep_test import prep_object_and_inputs
+from segmentation_data_prep_test import prep_object_and_inputs
 
 tf.config.run_functions_eagerly(True)
 
@@ -57,6 +57,18 @@ def test_prep_data(config_params):
         config_params["num_validation"] = [2, 2]
         config_params["num_test"] = [2, 2]
         config_params["batch_size"] = 2
+
+        # check if BEN works, so batches only contain samples from one dataset
+        config_params["BEN"] = True
+        trainer = ModelBuilder(config_params)
+        trainer.prep_data()
+        for batch in trainer.train_dataset:
+            # test that batches are pure with respect to marker, fov and datasets
+            assert len(set(list(batch["marker"].numpy()))) == 1
+            assert len(set(list(batch["folder_name"].numpy()))) == 1
+            assert len(set(list(batch["dataset"].numpy()))) == 1
+
+        config_params["BEN"] = False
         trainer = ModelBuilder(config_params)
         trainer.prep_data()
 
@@ -504,3 +516,33 @@ def test_fov_filter(config_params):
             for example in dataset_filtered:
                 fov_list.append(example["folder_name"].numpy().decode())
             assert set(fov) == set(fov_list)
+
+
+def test_make_pure_batches(config_params):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        data_prep, _, _, _ = prep_object_and_inputs(temp_dir, selected_markers=["CD4", "CD56"])
+        data_prep.tf_record_path = temp_dir
+        data_prep.tile_size = [32, 32]
+        data_prep.stride = [32, 32]
+        data_prep.make_tf_record()
+        tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
+        config_params["record_path"] = [tf_record_path]
+        config_params["path"] = temp_dir
+        config_params["experiment"] = "test"
+        config_params["dataset_names"] = ["test1"]
+        config_params["num_steps"] = 20
+        config_params["dataset_sample_probs"] = [1.0]
+        config_params["batch_size"] = 4
+        trainer = ModelBuilder(config_params)
+        dataset = tf.data.TFRecordDataset(tf_record_path)
+        dataset = dataset.map(lambda x: tf.io.parse_single_example(x, feature_description))
+        dataset = dataset.map(parse_dict)
+        dataset_pure = trainer.make_pure_batches(dataset)
+        dataset_pure = dataset_pure.shuffle(1000)
+        for example in dataset_pure:
+            # test batch_size
+            assert len(example["marker"]) == 4
+            # test that batches are pure with respect to marker, fov and datasets
+            assert len(set(list(example["marker"].numpy()))) == 1
+            assert len(set(list(example["folder_name"].numpy()))) == 1
+            assert len(set(list(example["dataset"].numpy()))) == 1

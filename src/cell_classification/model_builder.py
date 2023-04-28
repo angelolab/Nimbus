@@ -134,17 +134,55 @@ class ModelBuilder:
         )
 
         # shuffle, batch and augment the datasets
-        self.train_dataset = self.train_dataset.shuffle(self.params["shuffle_buffer_size"]).batch(
-            self.params["batch_size"] * np.max([self.num_gpus, 1])
-        )
-        self.validation_datasets = [validation_dataset.batch(
-            self.params["batch_size"] * np.max([self.num_gpus, 1])
-        ) for validation_dataset in self.validation_datasets]
-        self.test_datasets = [test_dataset.batch(
-            self.params["batch_size"] * np.max([self.num_gpus, 1])
-        ) for test_dataset in self.test_datasets]
+        if self.params["BEN"]:
+            self.train_dataset = self.make_pure_batches(self.train_dataset).shuffle(
+                self.params["shuffle_buffer_size"]
+            ).shuffle(self.params["shuffle_buffer_size"])
+            self.validation_datasets = [
+                self.make_pure_batches(validation_dataset) for validation_dataset in
+                self.validation_datasets
+            ]
+            self.test_datasets = [
+                self.make_pure_batches(test_dataset) for test_dataset in self.test_datasets
+            ]
+        else:
+            self.train_dataset = self.train_dataset.shuffle(self.params["shuffle_buffer_size"]).batch(
+                self.params["batch_size"] * np.max([self.num_gpus, 1])
+            )
+            self.validation_datasets = [validation_dataset.batch(
+                self.params["batch_size"] * np.max([self.num_gpus, 1])
+            ) for validation_dataset in self.validation_datasets]
+            self.test_datasets = [test_dataset.batch(
+                self.params["batch_size"] * np.max([self.num_gpus, 1])
+            ) for test_dataset in self.test_datasets]
 
         self.dataset_names = self.params["dataset_names"]
+
+    def make_pure_batches(self, dataset):
+        """Makes batches from a dataset such that each batch contains only one fov and marker
+        Args:
+            dataset: tf.data.Dataset
+        Returns:
+            dataset: tf.data.Dataset
+        """
+        def key_func(example):
+            """Returns a hash bucket for each example based on dataset, fov, and marker"""
+            i = 1e10
+            hash_ = tf.strings.to_hash_bucket(
+                example["dataset"] + example["folder_name"] + example["marker"], i
+            )
+            return hash_
+
+        def reduce_func(key, dataset):
+            """Reduces the windows to batches"""
+            return dataset.batch(self.params["batch_size"])
+        
+        dataset = dataset.group_by_window(
+            key_func=key_func,
+            reduce_func=reduce_func,
+            window_size=self.params["batch_size"],
+        )        
+        return dataset
 
     def prep_model(self):
         """Prepares the model for training"""
