@@ -40,7 +40,7 @@ jobs:
     name: Upload Coverage
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout ${{github.repository }}
+      - name: Checkout ${{ github.repository }}
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
@@ -50,7 +50,7 @@ jobs:
         with:
           name: coverage
           path: coverage
-
+ 
       - name: Upload Coverage to Coveralls
         uses: coverallsapp/github-action@v2
         with:

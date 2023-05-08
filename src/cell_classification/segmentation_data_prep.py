@@ -415,9 +415,9 @@ class SegmentationTFRecords:
 
         # CELL TYPE TABLE
         # drop all columns except cell_type_key, segment_label_key, sample_key
-        self.cell_type_table.drop(self.cell_type_table.columns.difference([
+        self.cell_type_table.drop(labels=self.cell_type_table.columns.difference([
             self.cell_type_key, self.segment_label_key, self.sample_key,
-        ]), 1, inplace=True)
+        ]), axis=1, inplace=True)
 
         # check if cell_type_key is in cell_type_table
         if self.cell_type_key not in self.cell_type_table.columns:
