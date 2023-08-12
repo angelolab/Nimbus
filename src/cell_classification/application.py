@@ -1,5 +1,7 @@
-import numpy as np
+from deepcell.model_zoo.panopticnet import PanopticNet
+from cell_classification.semantic_head import create_semantic_head
 from deepcell.applications import Application
+import numpy as np
 
 
 def cell_preprocess(image, **kwargs):
@@ -41,18 +43,33 @@ class CellClassification(Application):
     """Cell Classification Application class for predicting marker activity for cells in multi-
     plexed images.
     """
-    def __init__(self, model):
+    def __init__(self):
         """Initializes a CellClassification Application.
         Args:
             model (tensorflow.keras.Model): Model to load weights into.
         """
+        backbone = "efficientnetv2bs"
+        input_shape = [1024,1024,2]
+        model = PanopticNet(
+            backbone=backbone, input_shape=input_shape,
+            norm_method="std", num_semantic_classes=[1],
+            create_semantic_head=create_semantic_head, location=False,
+        )
         super(CellClassification, self).__init__(
-            model,
+            model=model, 
             model_image_shape=model.input_shape[1:],
             preprocessing_fn=cell_preprocess,
             postprocessing_fn=cell_postprocess,
             format_model_output_fn=format_output,
         )
+
+    def load_weights(self, checkpoint_path):
+        """Loads weights from a checkpoint file.
+        Args:
+            checkpoint_path (str): Path to checkpoint file.
+        """
+        self.model.load_weights(checkpoint_path)
+        print("Loaded weights from {}".format(checkpoint_path))
 
     def predict(self, input_data, normalize=True, marker=None, normalization_dict=None):
         """Predicts cell classification for input data.
