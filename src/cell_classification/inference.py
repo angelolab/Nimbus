@@ -25,8 +25,10 @@ def calculate_normalization(channel_path, quantile):
     chan = os.path.basename(channel_path).split(".")[0]
     return chan, normalization_value
 
+
 def prepare_normalization_dict(
         fov_paths, output_dir, quantile=0.999, exclude_channels=[], n_subset=10, n_jobs=1,
+        output_name="normalization_dict.json"
     ):
     """Prepares the normalization dict for a list of fovs
     Args:
@@ -65,9 +67,8 @@ def prepare_normalization_dict(
     for channel in normalization_dict.keys():
         normalization_dict[channel] = np.mean(normalization_dict[channel])
     # save normalization dict
-    if not os.path.exists(os.path.join(output_dir, 'normalization_dict.json')):
-        with open(os.path.join(output_dir, 'normalization_dict.json'), 'w') as f:
-            json.dump(normalization_dict, f)    
+    with open(os.path.join(output_dir, output_name), 'w') as f:
+        json.dump(normalization_dict, f)
     return normalization_dict
 
 
@@ -133,10 +134,10 @@ def test_time_aug(
 
 def predict(fov_paths,
             cell_classification_output_dir,
-            app,normalization_dict,
+            app,
+            normalization_dict,
             segmentation_naming_convention,
             exclude_channels=[],
-            plot_predictions=True,
             save_predictions=True,
             half_resolution=False,
             ):
@@ -177,25 +178,10 @@ def predict(fov_paths,
                 fov_dict["fov"] = [os.path.basename(fov_path)]*len(labels)
                 fov_dict["segmentation_label"] = labels
             fov_dict[channel+"_pred"] = mean_per_cell
-            if plot_predictions:
-                fig, ax = plt.subplots(1,3, figsize=(16,16))
-                # plot stuff
-                ax[0].imshow(np.squeeze(input_data[...,0]), vmin=0, vmax=np.quantile(input_data[...,0], 0.999))
-                ax[0].set_title(channel)
-                ax[1].imshow(np.squeeze(input_data[...,1]), cmap="Grays")
-                ax[1].set_title("Segmentation")
-                ax[2].imshow(np.squeeze(prediction), vmin=0, vmax=1)
-                ax[2].set_title(channel+"_pred")
-                for a in ax:
-                    a.set_xticks([])
-                    a.set_yticks([])
-                plt.tight_layout()
-                plt.show()
             if save_predictions:
                 os.makedirs(out_fov_path, exist_ok=True)
                 pred_int = tf.cast(prediction*255.0, tf.uint8).numpy()
                 io.imsave(os.path.join(out_fov_path, channel+".tiff"), pred_int, photometric="minisblack", compression="zlib")
         fov_dict_list.append(pd.DataFrame(fov_dict))
     cell_table = pd.concat(fov_dict_list, ignore_index=True)
-    cell_table.to_csv(os.path.join(cell_classification_output_dir, "pred_cell_table.csv"), index=False)
     return cell_table
