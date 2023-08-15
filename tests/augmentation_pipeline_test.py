@@ -47,7 +47,7 @@ def get_params():
 def test_get_augmentation_pipeline():
     params = get_params()
     augmentation_pipeline = get_augmentation_pipeline(params)
-    assert type(augmentation_pipeline) == iaa.Sequential
+    assert isinstance(augmentation_pipeline, iaa.Sequential)
 
 
 @parametrize("batch_num", [1, 2, 3])
@@ -64,8 +64,8 @@ def test_augment_images(batch_num, chan_num):
     augmented_images, augmented_masks = augment_images(images, masks, augmentation_pipeline)
 
     # check if right types and shapes are returned
-    assert type(augmented_images) == np.ndarray
-    assert type(augmented_masks) == np.ndarray
+    assert isinstance(augmented_images, np.ndarray)
+    assert isinstance(augmented_masks, np.ndarray)
     assert augmented_images.dtype == np.float32
     assert augmented_masks.dtype == np.int32
     assert augmented_images.shape == images.shape
@@ -124,9 +124,9 @@ def test_prepare_tf_aug(batch_num):
     )
     mplex_img, binary_mask, marker_activity_mask = prepare_data(batch_num)
     # check if right types and shapes are returned
-    assert type(mplex_aug) == np.ndarray
-    assert type(mask_out) == np.ndarray
-    assert type(marker_activity_aug) == np.ndarray
+    assert isinstance(mplex_aug, np.ndarray)
+    assert isinstance(mask_out, np.ndarray)
+    assert isinstance(marker_activity_aug, np.ndarray)
     assert mplex_aug.dtype == np.float32
     assert mask_out.dtype == np.int32
     assert marker_activity_aug.dtype == np.int32
