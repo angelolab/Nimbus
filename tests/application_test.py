@@ -41,19 +41,19 @@ def test_cell_preprocess():
     assert np.array_equal(input_data, output)
 
 
+def test_initialize_model():
+        nimbus = Nimbus(None, None, None)
+        assert type(nimbus.model) == tf.keras.functional.Functional
+
+
 def test_check_inputs():
     with tempfile.TemporaryDirectory() as temp_dir:
         _, fov_paths, _, _ = prep_object_and_inputs(temp_dir)
-        exclude_channels = ["CD57"]
         segmentation_naming_convention = lambda x: os.path.join(x, "cell_segmentation.tiff")
         output_dir = temp_dir
-        save_predictions = True
         
         # check if no errors are raised when all inputs are valid
-        nimbus = Nimbus(
-            fov_paths, exclude_channels, segmentation_naming_convention, output_dir,
-            save_predictions
-        )
+        nimbus = Nimbus(fov_paths, segmentation_naming_convention, output_dir)
         nimbus.check_inputs()
 
         # check if error is raised when a path in fov_paths does not exist on disk
@@ -74,37 +74,51 @@ def test_check_inputs():
             nimbus.check_inputs()
 
 
-def test_initialize_model():
-        nimbus = Nimbus(None, None, None, None, None)
-        assert type(nimbus.model) == tf.keras.functional.Functional
-
-
 def test_prepare_normalization_dict():
     # test if normalization dict gets prepared and saved, in-depth tests are in inference_test.py
-
-
-def Nimbus_test(config_params):
     with tempfile.TemporaryDirectory() as temp_dir:
-        data_prep, _, _, _ = prep_object_and_inputs(temp_dir)
-        data_prep.tf_record_path = temp_dir
-        data_prep.make_tf_record()
-        tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
-        config_params["record_path"] = tf_record_path
-        config_params["path"] = temp_dir
-        config_params["experiment"] = "test"
-        config_params["num_steps"] = 20
-        config_params["num_validation"] = 2
-        config_params["batch_size"] = 2
-        config_params["test"] = True
-        config_params["snap_steps"] = 5000
-        config_params["val_steps"] = 5000
-        trainer = ModelBuilder(config_params)
-        trainer.train()
-        input_data = np.random.rand(1, 1024, 1024, 2)
-        prediction = Nimbus(trainer.model).predict(
-            input_data, marker="test", normalization_dict={"test": 1.0}
+        _, fov_paths, _, _ = prep_object_and_inputs(temp_dir)
+        segmentation_naming_convention = lambda x: os.path.join(x, "cell_segmentation.tiff")
+        output_dir = temp_dir
+        nimbus = Nimbus(
+            fov_paths, segmentation_naming_convention, output_dir, exclude_channels = ["CD57"]
         )
-        # check if shape and values are in the expected range
-        assert prediction.shape == (1, 1024, 1024, 1)
-        assert prediction.max() <= 1.0
-        assert prediction.min() >= 0.0
+        # test if normalization dict gets prepared and saved
+        nimbus.prepare_normalization_dict(overwrite=True)
+        assert os.path.exists(os.path.join(output_dir, "normalization_dict.json"))
+        assert "CD57" not in nimbus.normalization_dict.keys()
+
+        # test if normalization dict gets loaded
+        nimbus_2 = Nimbus(
+            fov_paths, segmentation_naming_convention, output_dir, exclude_channels = ["CD57"]
+        )
+        nimbus_2.prepare_normalization_dict()
+        assert nimbus_2.normalization_dict == nimbus.normalization_dict
+
+
+def test_predict_fovs():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        _, fov_paths, _, _ = prep_object_and_inputs(temp_dir)
+        segmentation_naming_convention = lambda x: os.path.join(x, "cell_segmentation.tiff")
+        os.remove(os.path.join(temp_dir, 'normalization_dict.json'))
+        output_dir = os.path.join(temp_dir, "nimbus_output")
+        nimbus = Nimbus(
+            fov_paths, segmentation_naming_convention, output_dir, exclude_channels=["CD57"]
+        )
+        cell_table = nimbus.predict_fovs()
+
+        # check if all channels are in the cell_table
+        for channel in nimbus.normalization_dict.keys():
+            assert channel+"_pred" in cell_table.columns
+        # check if cell_table was saved
+        assert os.path.exists(os.path.join(output_dir, "nimbus_cell_table.csv"))
+
+        # check if fov folders were created in output_dir
+        for fov_path in fov_paths:
+            fov = os.path.basename(fov_path)
+            assert os.path.exists(os.path.join(output_dir, fov))
+            # check if all predictions were saved
+            for channel in nimbus.normalization_dict.keys():
+                assert os.path.exists(os.path.join(output_dir, fov, channel+".tiff"))
+            # check if CD57 was excluded
+            assert not os.path.exists(os.path.join(output_dir, fov, "CD57.tiff"))

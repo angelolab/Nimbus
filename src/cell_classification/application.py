@@ -47,8 +47,8 @@ class Nimbus(Application):
     """Nimbus application class for predicting marker activity for cells in multiplexed images.
     """
     def __init__(
-              self, fov_paths, exclude_channels, segmentation_naming_convention, output_dir,
-                save_predictions, half_resolution=True
+              self, fov_paths, segmentation_naming_convention, output_dir,
+                save_predictions=True, exclude_channels=[], half_resolution=True
         ):
         """Initializes a Nimbus Application.
         Args:
@@ -66,6 +66,11 @@ class Nimbus(Application):
         self.output_dir = output_dir
         self.half_resolution = half_resolution
         self.save_predictions = save_predictions
+        self.checked_inputs = False
+        # exclude segmentation channel from analysis
+        seg_name = os.path.basename(self.segmentation_naming_convention(self.fov_paths[0]))
+        self.exclude_channels.append(seg_name.split(".")[0])
+        os.makedirs(self.output_dir, exist_ok=True)
         
         # initialize model and parent class
         self.initialize_model()
@@ -93,6 +98,10 @@ class Nimbus(Application):
         # check if output_dir exists
         io_utils.validate_paths([self.output_dir])
 
+        if isinstance(self.exclude_channels, str):
+            self.exclude_channels = [self.exclude_channels]
+        self.checked_inputs = True
+
     def initialize_model(self):
         """Initializes the model and load weights.
         """
@@ -111,56 +120,42 @@ class Nimbus(Application):
         self.model = model
 
     def prepare_normalization_dict(
-            self, quantile=0.999, n_subset=10, multiprocessing=False
+            self, quantile=0.999, n_subset=10, multiprocessing=False, overwrite=False,
         ):
         """Load or prepare and save normalization dictionary for Nimbus model.
         Args:
             quantile (float): Quantile to use for normalization.
             n_subset (int): Number of fovs to use for normalization.
             multiprocessing (bool): Whether to use multiprocessing.
+            overwrite (bool): Whether to overwrite existing normalization dict.
         Returns:
             dict: Dictionary of normalization factors.
         """
         self.normalization_dict_path = os.path.join(self.output_dir, "normalization_dict.json")
-        if os.path.exists(self.normalization_dict_path):
-            self.normalization_dict = json.loads(self.normalization_dict_path)
+        if os.path.exists(self.normalization_dict_path) and not overwrite:
+            self.normalization_dict = json.load(open(self.normalization_dict_path))
         else:
+
             n_jobs = os.cpu_count() if multiprocessing else 1
             self.normalization_dict = prepare_normalization_dict(
-                self.fov_paths, self.output_dir, quantile, self.exclude_channels, n_subset,
-                n_jobs
+                self.fov_paths, self.output_dir, quantile, self.exclude_channels, n_subset, n_jobs
             )
 
-    def predict_fovs(self, input_data, normalize=True, marker=None, normalization_dict=None):
+    def predict_fovs(self):
         """Predicts cell classification for input data.
-        Args:
-            input_data (np.array): Input data to predict on.
-            normalize (bool): Whether to normalize input data.
-            marker (str): Name of marker to normalize.
-            normalization_dict (dict): Dictionary of normalization factors.
         Returns:
             np.array: Predicted cell classification.
         """
+        if self.checked_inputs == False:
+            self.check_inputs()
+        if not hasattr(self, "normalization_dict"):
+            self.prepare_normalization_dict()
         self.cell_table = predict(
-            self.fov_paths, self.nimbus_output_dir, self, self.normalization_dict,
+            self.fov_paths, self.output_dir, self, self.normalization_dict,
             self.segmentation_naming_convention, self.exclude_channels, self.save_predictions,
             self.half_resolution,
         )
         self.cell_table.to_csv(
-            os.path.join(self.nimbus_output_dir,"nimbus_cell_table.csv"), index=False
+            os.path.join(self.output_dir,"nimbus_cell_table.csv"), index=False
         )
-
-# if plot_predictions:
-#     fig, ax = plt.subplots(1,3, figsize=(16,16))
-#     # plot stuff
-#     ax[0].imshow(np.squeeze(input_data[...,0]), vmin=0, vmax=np.quantile(input_data[...,0], 0.999))
-#     ax[0].set_title(channel)
-#     ax[1].imshow(np.squeeze(input_data[...,1]), cmap="Grays")
-#     ax[1].set_title("Segmentation")
-#     ax[2].imshow(np.squeeze(prediction), vmin=0, vmax=1)
-#     ax[2].set_title(channel+"_pred")
-#     for a in ax:
-#         a.set_xticks([])
-#         a.set_yticks([])
-#     plt.tight_layout()
-#     plt.show()
+        return self.cell_table
