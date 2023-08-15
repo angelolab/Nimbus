@@ -2,7 +2,7 @@ from deepcell.model_zoo.panopticnet import PanopticNet
 from cell_classification.semantic_head import create_semantic_head
 from deepcell.applications import Application
 from alpineer import io_utils
-from cell_classification.inference import prepare_normalization_dict, predict
+from cell_classification.inference import prepare_normalization_dict, predict_fovs
 import numpy as np
 import json
 import os
@@ -150,7 +150,7 @@ class Nimbus(Application):
             self.check_inputs()
         if not hasattr(self, "normalization_dict"):
             self.prepare_normalization_dict()
-        self.cell_table = predict(
+        self.cell_table = predict_fovs(
             self.fov_paths, self.output_dir, self, self.normalization_dict,
             self.segmentation_naming_convention, self.exclude_channels, self.save_predictions,
             self.half_resolution,

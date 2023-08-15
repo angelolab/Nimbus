@@ -33,11 +33,14 @@ def prepare_normalization_dict(
     """Prepares the normalization dict for a list of fovs
     Args:
         fov_paths (list): list of paths to fovs
+        output_dir (str): path to output directory
         quantile (float): quantile to use for normalization
         exclude_channels (list): list of channels to exclude
         n_subset (int): number of fovs to use for normalization
+        n_jobs (int): number of jobs to use for joblib multiprocessing
+        output_name (str): name of output file
     Returns:
-        normalization_dict (dict): dict with fov names as keys and normalization values as values
+        normalization_dict (dict): dict with channel names as keys and norm factors  as values
     """
     normalization_dict = {}
     if n_subset is not None:
@@ -73,6 +76,13 @@ def prepare_normalization_dict(
 
 
 def prepare_input_data(mplex_img, instance_mask):
+    """Prepares the input data for the segmentation model
+    Args:
+        mplex_img (np.array): multiplex image
+        instance_mask (np.array): instance mask
+    Returns:
+        input_data (np.array): input data for segmentation model
+    """
     edge = find_boundaries(instance_mask, mode="inner").astype(np.uint8)
     binary_mask = np.logical_and(edge == 0, instance_mask > 0).astype(np.float32)
     input_data = np.stack([mplex_img, binary_mask], axis=-1)[np.newaxis,...] # bhwc
@@ -80,6 +90,14 @@ def prepare_input_data(mplex_img, instance_mask):
 
 
 def segment_mean(instance_mask, prediction):
+    """Calculates the mean prediction per instance
+    Args:
+        instance_mask (np.array): instance mask
+        prediction (np.array): prediction
+    Returns:
+        uniques (np.array): unique instance ids
+        mean_per_cell (np.array): mean prediction per instance
+    """
     instance_mask_flat = tf.cast(tf.reshape(instance_mask, -1), tf.int32)  # (h*w)
     pred_flat = tf.cast(tf.reshape(prediction, -1), tf.float32)
     sort_order = tf.argsort(instance_mask_flat)
@@ -132,7 +150,7 @@ def test_time_aug(
     return seg_map
 
 
-def predict(fov_paths,
+def predict_fovs(fov_paths,
             cell_classification_output_dir,
             app,
             normalization_dict,
