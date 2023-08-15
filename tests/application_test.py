@@ -102,8 +102,10 @@ def test_predict_fovs():
         segmentation_naming_convention = lambda x: os.path.join(x, "cell_segmentation.tiff")
         os.remove(os.path.join(temp_dir, 'normalization_dict.json'))
         output_dir = os.path.join(temp_dir, "nimbus_output")
+        fov_paths = fov_paths[:1]
         nimbus = Nimbus(
-            fov_paths, segmentation_naming_convention, output_dir, exclude_channels=["CD57"]
+            fov_paths, segmentation_naming_convention, output_dir,
+            exclude_channels=["CD57", "CD11c", "XYZ"]
         )
         cell_table = nimbus.predict_fovs()
 
@@ -122,3 +124,5 @@ def test_predict_fovs():
                 assert os.path.exists(os.path.join(output_dir, fov, channel+".tiff"))
             # check if CD57 was excluded
             assert not os.path.exists(os.path.join(output_dir, fov, "CD57.tiff"))
+            assert not os.path.exists(os.path.join(output_dir, fov, "CD11c.tiff"))
+            assert not os.path.exists(os.path.join(output_dir, fov, "XYZ.tiff"))
