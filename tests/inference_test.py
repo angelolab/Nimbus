@@ -5,7 +5,7 @@ import tempfile
 import numpy as np
 from skimage import io
 from cell_classification.application import Nimbus
-from segmentation_data_prep_test import prepare_test_data_folders
+from segmentation_data_prep_test import prepare_test_data_folders, prep_object_and_inputs
 from cell_classification.inference import calculate_normalization, prepare_normalization_dict
 from cell_classification.inference import prepare_input_data, segment_mean, predict_fovs
 from cell_classification.inference import test_time_aug as tt_aug
@@ -88,13 +88,99 @@ def test_segment_mean():
             scale=scales
         )
         mplex_img = io.imread(os.path.join(fov_paths[0], "CD4.tiff"))
-        prediction = (mplex_img > 0.5).astype(np.float32)
+        prediction = (mplex_img > 0.25).astype(np.float32)
         instance_mask = io.imread(os.path.join(fov_paths[0], "cell_segmentation.tiff"))
+        instance_ids, mean_per_cell = segment_mean(instance_mask, prediction)
+        # check if we get the correct number of cells
+        assert len(instance_ids) == len(np.unique(instance_mask)[1:])
+        # check if we get the correct mean per cell
+        for i in np.unique(instance_mask)[1:]:
+            assert mean_per_cell[i-1] == np.mean(prediction[instance_mask == i])
 
 
 def test_tt_aug():
-    pass
+    with tempfile.TemporaryDirectory() as temp_dir:
+        def segmentation_naming_convention(fov_path):
+            return os.path.join(fov_path, "cell_segmentation.tiff")
+
+        _, fov_paths, _, _ = prep_object_and_inputs(temp_dir)
+        os.remove(os.path.join(temp_dir, 'normalization_dict.json'))
+        output_dir = os.path.join(temp_dir, "nimbus_output")
+        fov_paths = fov_paths[:1]
+        nimbus = Nimbus(
+            fov_paths, segmentation_naming_convention, output_dir,
+            exclude_channels=["CD57", "CD11c", "XYZ"]
+        )
+        nimbus.prepare_normalization_dict()
+        channel = "CD4"
+        mplex_img = io.imread(os.path.join(fov_paths[0], channel+".tiff"))
+        instance_mask = io.imread(os.path.join(fov_paths[0], "cell_segmentation.tiff"))
+        input_data = prepare_input_data(mplex_img, instance_mask)
+        pred_map = tt_aug(
+            input_data, channel, nimbus, nimbus.normalization_dict, rotate=True, flip=True,
+            batch_size=32
+        )
+        # check if we get the correct shape
+        assert pred_map.shape == (256, 256, 1)
+
+        pred_map_2 = tt_aug(
+            input_data, channel, nimbus, nimbus.normalization_dict, rotate=False, flip=True,
+            batch_size=32
+        )
+        pred_map_3 = tt_aug(
+            input_data, channel, nimbus, nimbus.normalization_dict, rotate=True, flip=False,
+            batch_size=32
+        )
+        pred_map_no_tt_aug = nimbus._predict_segmentation(
+            input_data,
+            batch_size=1,
+            preprocess_kwargs={
+                "normalize": True,
+                "marker": channel,
+                "normalization_dict": nimbus.normalization_dict},
+        )
+        # check if we get roughly the same results for non augmented and augmented predictions
+        assert np.allclose(pred_map, pred_map_no_tt_aug, atol=0.05)
+        assert np.allclose(pred_map_2, pred_map_no_tt_aug, atol=0.05)
+        assert np.allclose(pred_map_3, pred_map_no_tt_aug, atol=0.05)
 
 
 def test_predict_fovs():
-    pass
+    with tempfile.TemporaryDirectory() as temp_dir:
+        def segmentation_naming_convention(fov_path):
+            return os.path.join(fov_path, "cell_segmentation.tiff")
+
+        exclude_channels = ["CD57", "CD11c", "XYZ"]
+        _, fov_paths, _, _ = prep_object_and_inputs(temp_dir)
+        os.remove(os.path.join(temp_dir, 'normalization_dict.json'))
+        output_dir = os.path.join(temp_dir, "nimbus_output")
+        fov_paths = fov_paths[:1]
+        nimbus = Nimbus(
+            fov_paths, segmentation_naming_convention, output_dir,
+            exclude_channels=exclude_channels
+        )
+        output_dir = os.path.join(temp_dir, "nimbus_output")
+        nimbus.prepare_normalization_dict()
+        cell_table = predict_fovs(
+            fov_paths, output_dir, nimbus, nimbus.normalization_dict,
+            segmentation_naming_convention, exclude_channels=exclude_channels,
+            save_predictions=False, half_resolution=True,
+        )
+        # check if we get the correct number of cells
+        assert len(cell_table) == 15
+        # check if we get the correct columns (fov, segmentation_label, CD4_pred, CD56_pred)
+        assert np.alltrue(
+            cell_table.columns == ["fov", "segmentation_label", "CD4_pred", "CD56_pred"]
+        )
+        # check if predictions don't get written to output_dir
+        assert not os.path.exists(os.path.join(output_dir, "fov_0", "CD4.tiff"))
+        assert not os.path.exists(os.path.join(output_dir, "fov_0", "CD56.tiff"))
+        #
+        # run again with save_predictions=True and check if predictions get written to output_dir
+        cell_table = predict_fovs(
+            fov_paths, output_dir, nimbus, nimbus.normalization_dict,
+            segmentation_naming_convention, exclude_channels=exclude_channels,
+            save_predictions=True, half_resolution=True,
+        )
+        assert os.path.exists(os.path.join(output_dir, "fov_0", "CD4.tiff"))
+        assert os.path.exists(os.path.join(output_dir, "fov_0", "CD56.tiff"))

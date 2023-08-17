@@ -159,3 +159,4 @@ class Nimbus(Application):
             os.path.join(self.output_dir,"nimbus_cell_table.csv"), index=False
         )
         return self.cell_table
+        

@@ -111,7 +111,19 @@ def segment_mean(instance_mask, prediction):
 
 def test_time_aug(
         input_data, channel, app, normalization_dict, rotate=True, flip=True, batch_size=32
-    ):    
+    ):
+    """Performs test time augmentation
+    Args:
+        input_data (np.array): input data for segmentation model, mplex_img and binary mask
+        channel (str): channel name
+        app (tf.keras.Model): segmentation model
+        normalization_dict (dict): dict with channel names as keys and norm factors  as values
+        rotate (bool): whether to rotate
+        flip (bool): whether to flip
+        batch_size (int): batch size
+    Returns:
+        seg_map (np.array): predicted segmentation map
+    """
     forward_augmentations = []
     backward_augmentations = []
     if rotate:
@@ -150,18 +162,29 @@ def test_time_aug(
     return seg_map
 
 
-def predict_fovs(fov_paths,
-            cell_classification_output_dir,
-            app,
-            normalization_dict,
-            segmentation_naming_convention,
-            exclude_channels=[],
-            save_predictions=True,
-            half_resolution=False,
-            ):
+def predict_fovs(
+        fov_paths, cell_classification_output_dir, app, normalization_dict,
+        segmentation_naming_convention, exclude_channels=[], save_predictions=True,
+        half_resolution=False,
+    ):
+    """Predicts the segmentation map for each mplex image in each fov
+    Args:
+        fov_paths (list): list of fov paths
+        cell_classification_output_dir (str): path to cell classification output dir
+        app (deepcell.applications.Application): segmentation model
+        normalization_dict (dict): dict with channel names as keys and norm factors  as values
+        segmentation_naming_convention (function): function to get instance mask path from fov path
+        exclude_channels (list): list of channels to exclude
+        save_predictions (bool): whether to save predictions
+        half_resolution (bool): whether to use half resolution
+    Returns:
+        cell_table (pd.DataFrame): cell table with predicted confidence scores per fov and cell
+    """
     fov_dict_list = []
     for fov_path in fov_paths:
-        out_fov_path = os.path.join(os.path.normpath(cell_classification_output_dir), os.path.basename(fov_path))
+        out_fov_path = os.path.join(
+            os.path.normpath(cell_classification_output_dir), os.path.basename(fov_path)
+        )
         fov_dict = {}
         for channel in os.listdir(fov_path):
             channel_path = os.path.join(fov_path, channel)
