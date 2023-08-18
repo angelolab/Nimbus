@@ -181,7 +181,7 @@ def predict_fovs(
         cell_table (pd.DataFrame): cell table with predicted confidence scores per fov and cell
     """
     fov_dict_list = []
-    for fov_path in fov_paths:
+    for fov_path in tqdm(fov_paths):
         out_fov_path = os.path.join(
             os.path.normpath(cell_classification_output_dir), os.path.basename(fov_path)
         )

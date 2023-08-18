@@ -3,6 +3,7 @@ from cell_classification.semantic_head import create_semantic_head
 from deepcell.applications import Application
 from alpineer import io_utils
 from cell_classification.inference import prepare_normalization_dict, predict_fovs
+import tensorflow as tf
 import numpy as np
 import json
 import os
@@ -101,6 +102,7 @@ class Nimbus(Application):
         if isinstance(self.exclude_channels, str):
             self.exclude_channels = [self.exclude_channels]
         self.checked_inputs = True
+        print("All inputs are valid.")
 
     def initialize_model(self):
         """Initializes the model and load weights.
@@ -112,8 +114,12 @@ class Nimbus(Application):
             norm_method="std", num_semantic_classes=[1],
             create_semantic_head=create_semantic_head, location=False,
         )
-        self.checkpoint_path = os.path.normpath("../cell_classification/checkpoints/" +
-                                "halfres_512_checkpoint_160000.h5"
+        # make sure path can be resolved on any OS and when importing  from anywhere
+        path = os.path.abspath(__file__)
+        drive, path = os.path.splitdrive(path)
+        self.checkpoint_path = os.path.join(
+            drive, os.sep, *path.split(os.sep)[1:-3], 'checkpoints',
+            'halfres_512_checkpoint_160000.h5'
         )
         model.load_weights(self.checkpoint_path)
         print("Loaded weights from {}".format(self.checkpoint_path))
@@ -150,6 +156,10 @@ class Nimbus(Application):
             self.check_inputs()
         if not hasattr(self, "normalization_dict"):
             self.prepare_normalization_dict()
+        # check if GPU is available
+        print("Available GPUs: ", tf.config.list_physical_devices('GPU'))
+        print("Predictions will be saved in {}".format(self.output_dir))
+        print("Iterating through fovs will take a while...")
         self.cell_table = predict_fovs(
             self.fov_paths, self.output_dir, self, self.normalization_dict,
             self.segmentation_naming_convention, self.exclude_channels, self.save_predictions,
