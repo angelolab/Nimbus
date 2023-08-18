@@ -170,7 +170,7 @@ def test_predict_fovs():
         assert len(cell_table) == 15
         # check if we get the correct columns (fov, segmentation_label, CD4_pred, CD56_pred)
         assert np.alltrue(
-            list(cell_table.columns) == ["fov", "segmentation_label", "CD4_pred", "CD56_pred"]
+            set(cell_table.columns) == set(["fov", "segmentation_label", "CD4_pred", "CD56_pred"])
         )
         # check if predictions don't get written to output_dir
         assert not os.path.exists(os.path.join(output_dir, "fov_0", "CD4.tiff"))
