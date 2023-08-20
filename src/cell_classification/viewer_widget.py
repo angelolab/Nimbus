@@ -11,14 +11,15 @@ class NimbusViewer(object):
     def __init__(self, input_dir, output_dir, img_width='600px'):
         """Viewer for Nimbus application.
         Args:
-            input_dir (str): Path to directory containing individual channels of multiplexed images.
+            input_dir (str): Path to directory containing individual channels of multiplexed images
             output_dir (str): Path to directory containing output of Nimbus application.
             img_width (str): Width of images in viewer.
         """
         self.image_width = img_width
         self.input_dir = input_dir
         self.output_dir = output_dir
-        self.fov_names = [os.path.basename(p) for p in os.listdir(output_dir) if os.path.isdir(os.path.join(output_dir, p))]
+        self.fov_names = [os.path.basename(p) for p in os.listdir(output_dir) if \
+                          os.path.isdir(os.path.join(output_dir, p))]
         self.update_button = widgets.Button(description="Update Image")
         self.update_button.on_click(self.update_button_click)
 
@@ -53,7 +54,9 @@ class NimbusViewer(object):
             change (dict): Change dictionary from ipywidgets.
         """
         fov_path = os.path.join(self.output_dir, self.fov_select.value)
-        channels = [ch for ch in os.listdir(fov_path) if os.path.isfile(os.path.join(fov_path, ch))]
+        channels = [
+            ch for ch in os.listdir(fov_path) if os.path.isfile(os.path.join(fov_path, ch))
+        ]
         self.red_select.options = channels
         self.green_select.options = channels
         self.blue_select.options = channels
@@ -120,7 +123,9 @@ class NimbusViewer(object):
         """
         in_f_path = os.path.join(self.input_dir, self.fov_select.value)
         # search for similar filename in in_f_path
-        in_f_files = [f for f in os.listdir(in_f_path) if os.path.isfile(os.path.join(in_f_path, f))]
+        in_f_files = [
+            f for f in os.listdir(in_f_path) if os.path.isfile(os.path.join(in_f_path, f))
+        ]
         similar_path = None
         for f in in_f_files:
             if select_value.split(".")[0]+"." in f:
@@ -135,7 +140,7 @@ class NimbusViewer(object):
         """
         # Convert composite image to bytes and assign it to the output_image widget
         with BytesIO() as output_buffer:
-            io.imsave(output_buffer, composite_image, format="png")  # Save as PNG (you can change the format)
+            io.imsave(output_buffer, composite_image, format="png")
             output_buffer.seek(0)
             image_viewer.value = output_buffer.read()
 
@@ -148,20 +153,28 @@ class NimbusViewer(object):
         }
         in_path_dict = copy(path_dict)
         if self.red_select.value:
-            path_dict["red"] = os.path.join(self.output_dir, self.fov_select.value, self.red_select.value)
+            path_dict["red"] = os.path.join(
+                self.output_dir, self.fov_select.value, self.red_select.value
+            )
             in_path_dict["red"] = self.search_for_similar(self.red_select.value)
         if self.green_select.value:
-            path_dict["green"] = os.path.join(self.output_dir, self.fov_select.value, self.green_select.value)
+            path_dict["green"] = os.path.join(
+                self.output_dir, self.fov_select.value, self.green_select.value
+            )
             in_path_dict["green"] = self.search_for_similar(self.green_select.value)
         if self.blue_select.value:
-            path_dict["blue"] = os.path.join(self.output_dir, self.fov_select.value, self.blue_select.value)
+            path_dict["blue"] = os.path.join(
+                self.output_dir, self.fov_select.value, self.blue_select.value
+            )
             in_path_dict["blue"] = self.search_for_similar(self.blue_select.value)
         non_none = [p for p in path_dict.values() if p]
         if not non_none:
             return
         composite_image = self.create_composite_image(path_dict)
         in_composite_image = self.create_composite_image(in_path_dict)
-        in_composite_image = in_composite_image / np.quantile(in_composite_image, 0.999, axis=(0,1))
+        in_composite_image = in_composite_image / np.quantile(
+            in_composite_image, 0.999, axis=(0,1)
+        )
         in_composite_image = np.clip(in_composite_image*255, 0, 255).astype(np.uint8)
         # update image viewers
         self.update_img(self.input_image, in_composite_image)
