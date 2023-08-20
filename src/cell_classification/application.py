@@ -49,7 +49,8 @@ class Nimbus(Application):
     """
     def __init__(
               self, fov_paths, segmentation_naming_convention, output_dir,
-                save_predictions=True, exclude_channels=[], half_resolution=True
+                save_predictions=True, exclude_channels=[], half_resolution=True,
+                batch_size=4
         ):
         """Initializes a Nimbus Application.
         Args:
@@ -60,6 +61,7 @@ class Nimbus(Application):
             output_dir (str): Path to directory to save output.
             save_predictions (bool): Whether to save predictions.
             half_resolution (bool): Whether to run model on half resolution images.
+            batch_size (int): Batch size for model inference.
         """
         self.fov_paths = fov_paths
         self.exclude_channels = exclude_channels
@@ -67,6 +69,7 @@ class Nimbus(Application):
         self.output_dir = output_dir
         self.half_resolution = half_resolution
         self.save_predictions = save_predictions
+        self._batch_size = batch_size
         self.checked_inputs = False
         # exclude segmentation channel from analysis
         seg_name = os.path.basename(self.segmentation_naming_convention(self.fov_paths[0]))
@@ -163,7 +166,7 @@ class Nimbus(Application):
         self.cell_table = predict_fovs(
             self.fov_paths, self.output_dir, self, self.normalization_dict,
             self.segmentation_naming_convention, self.exclude_channels, self.save_predictions,
-            self.half_resolution,
+            self.half_resolution, batch_size=self._batch_size
         )
         self.cell_table.to_csv(
             os.path.join(self.output_dir,"nimbus_cell_table.csv"), index=False

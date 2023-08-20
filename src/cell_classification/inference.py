@@ -110,7 +110,7 @@ def segment_mean(instance_mask, prediction):
 
 
 def test_time_aug(
-        input_data, channel, app, normalization_dict, rotate=True, flip=True, batch_size=32
+        input_data, channel, app, normalization_dict, rotate=True, flip=True, batch_size=4
     ):
     """Performs test time augmentation
     Args:
@@ -165,7 +165,7 @@ def test_time_aug(
 def predict_fovs(
         fov_paths, cell_classification_output_dir, app, normalization_dict,
         segmentation_naming_convention, exclude_channels=[], save_predictions=True,
-        half_resolution=False,
+        half_resolution=False, batch_size=4
     ):
     """Predicts the segmentation map for each mplex image in each fov
     Args:
@@ -177,6 +177,7 @@ def predict_fovs(
         exclude_channels (list): list of channels to exclude
         save_predictions (bool): whether to save predictions
         half_resolution (bool): whether to use half resolution
+        batch_size (int): batch size
     Returns:
         cell_table (pd.DataFrame): cell table with predicted confidence scores per fov and cell
     """
@@ -204,12 +205,23 @@ def predict_fovs(
                 input_data = np.squeeze(input_data)
                 h,w,_ = input_data.shape
                 img = cv2.resize(input_data[...,0], [int(h*scale), int(w*scale)])
-                binary_mask = cv2.resize(input_data[...,1], [int(h*scale), int(w*scale)], interpolation=0)
+                binary_mask = cv2.resize(
+                    input_data[...,1], [int(h*scale), int(w*scale)], interpolation=0
+                )
                 input_data = np.stack([img, binary_mask], axis=-1)[np.newaxis,...]
             if test_time_aug:
-                prediction = test_time_aug(input_data, channel, app, normalization_dict)
+                prediction = test_time_aug(
+                    input_data, channel, app, normalization_dict, batch_size=batch_size
+                )
             else:
-                prediction = app._predict_segmentation(input_data, preprocess_kwargs={"normalize": True, "marker": channel, "normalization_dict": normalization_dict}, batch_size=2)
+                prediction = app._predict_segmentation(
+                    input_data,
+                    preprocess_kwargs={
+                        "normalize": True, "marker": channel,
+                        "normalization_dict": normalization_dict
+                    },
+                    batch_size=batch_size
+                )
             prediction = np.squeeze(prediction)
             if half_resolution:
                 prediction = cv2.resize(prediction, (h, w))
@@ -222,7 +234,10 @@ def predict_fovs(
             if save_predictions:
                 os.makedirs(out_fov_path, exist_ok=True)
                 pred_int = tf.cast(prediction*255.0, tf.uint8).numpy()
-                io.imsave(os.path.join(out_fov_path, channel+".tiff"), pred_int, photometric="minisblack", compression="zlib")
+                io.imsave(
+                    os.path.join(out_fov_path, channel+".tiff"), pred_int,
+                    photometric="minisblack", compression="zlib"
+                )
         fov_dict_list.append(pd.DataFrame(fov_dict))
     cell_table = pd.concat(fov_dict_list, ignore_index=True)
     return cell_table
