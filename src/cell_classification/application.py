@@ -50,7 +50,7 @@ class Nimbus(Application):
     def __init__(
               self, fov_paths, segmentation_naming_convention, output_dir,
                 save_predictions=True, exclude_channels=[], half_resolution=True,
-                batch_size=4
+                batch_size=4, test_time_aug=True, input_shape=[1024,1024]
         ):
         """Initializes a Nimbus Application.
         Args:
@@ -62,6 +62,8 @@ class Nimbus(Application):
             save_predictions (bool): Whether to save predictions.
             half_resolution (bool): Whether to run model on half resolution images.
             batch_size (int): Batch size for model inference.
+            test_time_aug (bool): Whether to use test time augmentation.
+            input_shape (list): Shape of input images.
         """
         self.fov_paths = fov_paths
         self.exclude_channels = exclude_channels
@@ -71,6 +73,8 @@ class Nimbus(Application):
         self.save_predictions = save_predictions
         self._batch_size = batch_size
         self.checked_inputs = False
+        self.test_time_aug = test_time_aug
+        self.input_shape = input_shape
         # exclude segmentation channel from analysis
         seg_name = os.path.basename(self.segmentation_naming_convention(self.fov_paths[0]))
         self.exclude_channels.append(seg_name.split(".")[0])
@@ -111,19 +115,23 @@ class Nimbus(Application):
         """Initializes the model and load weights.
         """
         backbone = "efficientnetv2bs"
-        input_shape = [1024,1024,2]
+        input_shape = self.input_shape + [2]
         model = PanopticNet(
             backbone=backbone, input_shape=input_shape,
             norm_method="std", num_semantic_classes=[1],
             create_semantic_head=create_semantic_head, location=False,
         )
         # make sure path can be resolved on any OS and when importing  from anywhere
-        path = os.path.abspath(__file__)
-        drive, path = os.path.splitdrive(path)
-        self.checkpoint_path = os.path.join(
-            drive, os.sep, *path.split(os.sep)[1:-3], 'checkpoints',
-            'halfres_512_checkpoint_160000.h5'
+        self.checkpoint_path = os.path.normpath(
+            "../cell_classification/checkpoints/halfres_512_checkpoint_160000.h5"
         )
+        if not os.path.exists(self.checkpoint_path):
+            path = os.path.abspath(__file__)
+            drive, path = os.path.splitdrive(path)
+            self.checkpoint_path = os.path.join(
+                drive, os.sep, *path.split(os.sep)[1:-3], 'checkpoints',
+                'halfres_512_checkpoint_160000.h5'
+            )
         model.load_weights(self.checkpoint_path)
         print("Loaded weights from {}".format(self.checkpoint_path))
         self.model = model
@@ -166,7 +174,7 @@ class Nimbus(Application):
         self.cell_table = predict_fovs(
             self.fov_paths, self.output_dir, self, self.normalization_dict,
             self.segmentation_naming_convention, self.exclude_channels, self.save_predictions,
-            self.half_resolution, batch_size=self._batch_size
+            self.half_resolution, batch_size=self._batch_size, test_time_aug=self.test_time_aug,
         )
         self.cell_table.to_csv(
             os.path.join(self.output_dir,"nimbus_cell_table.csv"), index=False
