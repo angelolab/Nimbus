@@ -165,7 +165,7 @@ def test_time_aug(
 def predict_fovs(
         fov_paths, cell_classification_output_dir, app, normalization_dict,
         segmentation_naming_convention, exclude_channels=[], save_predictions=True,
-        half_resolution=False, batch_size=4
+        half_resolution=False, batch_size=4, test_time_augmentation=True
     ):
     """Predicts the segmentation map for each mplex image in each fov
     Args:
@@ -178,6 +178,7 @@ def predict_fovs(
         save_predictions (bool): whether to save predictions
         half_resolution (bool): whether to use half resolution
         batch_size (int): batch size
+        test_time_augmentation (bool): whether to use test time augmentation
     Returns:
         cell_table (pd.DataFrame): cell table with predicted confidence scores per fov and cell
     """
@@ -209,7 +210,7 @@ def predict_fovs(
                     input_data[...,1], [int(h*scale), int(w*scale)], interpolation=0
                 )
                 input_data = np.stack([img, binary_mask], axis=-1)[np.newaxis,...]
-            if test_time_aug:
+            if test_time_augmentation:
                 prediction = test_time_aug(
                     input_data, channel, app, normalization_dict, batch_size=batch_size
                 )

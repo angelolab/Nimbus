@@ -174,7 +174,8 @@ class Nimbus(Application):
         self.cell_table = predict_fovs(
             self.fov_paths, self.output_dir, self, self.normalization_dict,
             self.segmentation_naming_convention, self.exclude_channels, self.save_predictions,
-            self.half_resolution, batch_size=self._batch_size, test_time_aug=self.test_time_aug,
+            self.half_resolution, batch_size=self._batch_size,
+            test_time_augmentation=self.test_time_aug,
         )
         self.cell_table.to_csv(
             os.path.join(self.output_dir,"nimbus_cell_table.csv"), index=False
