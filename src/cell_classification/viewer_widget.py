@@ -4,6 +4,7 @@ from IPython.display import display
 from io import BytesIO
 from skimage import io
 from copy import copy
+import numpy as np
 
 
 class NimbusViewer(object):
