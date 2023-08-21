@@ -24,7 +24,8 @@ dependencies = [
     "tables>=3",
     "h5py>=3.7",
     "seaborn>=0.12",
-    "alpineer>=0.1.5"
+    "alpineer>=0.1.5",
+    "natsort>=7.1",
 ]
 name = "cell_classification"
 authors = [{ name = "Angelo Lab", email = "theangelolab@gmail.com" }]

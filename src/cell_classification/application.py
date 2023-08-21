@@ -44,6 +44,28 @@ def format_output(model_output):
     return model_output[0]
 
 
+def prep_deepcell_naming_convention(deepcell_output_dir):
+    """Prepares the naming convention for the segmentation data
+    Args:
+        deepcell_output_dir (str): path to directory where segmentation data is saved
+    Returns:
+        segmentation_naming_convention (function): function that returns the path to the
+            segmentation data for a given fov
+    """
+    def segmentation_naming_convention(fov_path):
+        """Prepares the path to the segmentation data for a given fov
+        Args:
+            fov_path (str): path to fov
+        Returns:
+            seg_path (str): paths to segmentation fovs
+        """
+        fov_name = os.path.basename(fov_path)
+        return os.path.join(
+            deepcell_output_dir, fov_name + "_whole_cell.tiff"
+        )
+    return segmentation_naming_convention
+
+
 class Nimbus(Application):
     """Nimbus application class for predicting marker activity for cells in multiplexed images.
     """

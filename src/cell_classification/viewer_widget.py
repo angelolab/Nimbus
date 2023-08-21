@@ -5,6 +5,7 @@ from io import BytesIO
 from skimage import io
 from copy import copy
 import numpy as np
+from natsort import natsorted
 
 
 class NimbusViewer(object):
@@ -20,6 +21,7 @@ class NimbusViewer(object):
         self.output_dir = output_dir
         self.fov_names = [os.path.basename(p) for p in os.listdir(output_dir) if \
                           os.path.isdir(os.path.join(output_dir, p))]
+        self.fov_names = natsorted(self.fov_names)
         self.update_button = widgets.Button(description="Update Image")
         self.update_button.on_click(self.update_button_click)
 
@@ -57,9 +59,9 @@ class NimbusViewer(object):
         channels = [
             ch for ch in os.listdir(fov_path) if os.path.isfile(os.path.join(fov_path, ch))
         ]
-        self.red_select.options = channels
-        self.green_select.options = channels
-        self.blue_select.options = channels
+        self.red_select.options = natsorted(channels)
+        self.green_select.options = natsorted(channels)
+        self.blue_select.options = natsorted(channels)
 
     def create_composite_image(self, path_dict):
         """Creates composite image from input paths.

@@ -5,6 +5,15 @@ import tempfile
 import numpy as np
 from segmentation_data_prep_test import prep_object_and_inputs
 from cell_classification.application import Nimbus, nimbus_preprocess
+from cell_classification.application import prep_deepcell_naming_convention
+
+
+def test_prep_deepcell_naming_convention():
+    segmentation_naming_convention = prep_deepcell_naming_convention("test_dir")
+    seg_path = segmentation_naming_convention("fov0")
+    assert isinstance(segmentation_naming_convention, type(lambda x: x))
+    assert isinstance(seg_path, str)
+    assert seg_path == os.path.join("test_dir", "fov0_whole_cell.tiff")
 
 
 def test_nimbus_preprocess():
