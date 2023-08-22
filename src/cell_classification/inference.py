@@ -228,9 +228,9 @@ def predict_fovs(
                 prediction = cv2.resize(prediction, (h, w))
             instance_mask = np.expand_dims(instance_mask, axis=-1)
             labels, mean_per_cell = segment_mean(instance_mask, prediction)
-            if "segmentation_label" not in fov_dict.keys():
+            if "label" not in fov_dict.keys():
                 fov_dict["fov"] = [os.path.basename(fov_path)]*len(labels)
-                fov_dict["segmentation_label"] = labels
+                fov_dict["label"] = labels
             fov_dict[channel+"_pred"] = mean_per_cell
             if save_predictions:
                 os.makedirs(out_fov_path, exist_ok=True)

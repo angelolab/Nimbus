@@ -168,9 +168,9 @@ def test_predict_fovs():
         )
         # check if we get the correct number of cells
         assert len(cell_table) == 15
-        # check if we get the correct columns (fov, segmentation_label, CD4_pred, CD56_pred)
+        # check if we get the correct columns (fov, label, CD4_pred, CD56_pred)
         assert np.alltrue(
-            set(cell_table.columns) == set(["fov", "segmentation_label", "CD4_pred", "CD56_pred"])
+            set(cell_table.columns) == set(["fov", "label", "CD4_pred", "CD56_pred"])
         )
         # check if predictions don't get written to output_dir
         assert not os.path.exists(os.path.join(output_dir, "fov_0", "CD4.tiff"))
@@ -180,7 +180,7 @@ def test_predict_fovs():
         cell_table = predict_fovs(
             fov_paths, output_dir, nimbus, nimbus.normalization_dict,
             segmentation_naming_convention, exclude_channels=exclude_channels,
-            save_predictions=True, half_resolution=True,
+            save_predictions=True, half_resolution=True, test_time_augmentation=False,
         )
         assert os.path.exists(os.path.join(output_dir, "fov_0", "CD4.tiff"))
         assert os.path.exists(os.path.join(output_dir, "fov_0", "CD56.tiff"))
