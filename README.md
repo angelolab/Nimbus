@@ -8,15 +8,23 @@ Clone the repository
 
 `git clone https://github.com/angelolab/cell_classification.git`
 
+
 Make a conda environment for Nimbus and activate it
+
 `conda create -n Nimbus python==3.10`
+
 `conda activate Nimbus`
 
+
 Install the package and all depedencies in the conda environment
+
 `python -m pip install -e cell_classification`
 
+
 Navigate to the example notebooks and start jupyter
+
 `cd cell_classification/templates`
+
 `jupyter notebook`
 
 
