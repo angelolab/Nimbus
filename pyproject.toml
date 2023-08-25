@@ -14,7 +14,7 @@ dependencies = [
     "keras>=2",
     "spektral>=1",
     "protobuf==3.20",
-    "scikit-image>=0.16,<0.20",
+    "scikit-image>=0.16",
     "scikit-learn>=1.2.2",
     "tifffile>=2023",
     "tqdm>=4",
@@ -26,6 +26,7 @@ dependencies = [
     "seaborn>=0.12",
     "alpineer>=0.1.5",
     "natsort>=7.1",
+    "ark-analysis>=0.6.0",
 ]
 name = "cell_classification"
 authors = [{ name = "Angelo Lab", email = "theangelolab@gmail.com" }]
