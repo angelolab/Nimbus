@@ -2,6 +2,8 @@
 
 The Nimbus repo contains code for training, validation and application of a machine learning model that classifies cells into marker positive/negative for arbitrary markers and different imaging platforms.
 
+Disclaimer: The environment does not support Apple Silicon chips (M1, M2) currently.
+
 ## Installation instructions
 
 Clone the repository
