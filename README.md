@@ -8,7 +8,7 @@ Disclaimer: The environment does not support Apple Silicon chips (M1, M2) curren
 
 Clone the repository
 
-`git clone https://github.com/angelolab/cell_classification.git`
+`git clone https://github.com/angelolab/Nimbus.git`
 
 
 Make a conda environment for Nimbus and activate it
@@ -20,7 +20,7 @@ Make a conda environment for Nimbus and activate it
 
 Install the package and all depedencies in the conda environment
 
-`python -m pip install -e cell_classification`
+`python -m pip install -e Nimbus`
 
 
 Navigate to the example notebooks and start jupyter
