@@ -1,6 +1,6 @@
-from deepcell.model_zoo.panopticnet import PanopticNet
-from cell_classification.semantic_head import create_semantic_head
-from deepcell.applications import Application
+from deepcell.panopticnet import PanopticNet
+from deepcell.semantic_head import create_semantic_head
+from deepcell.application import Application
 from alpineer import io_utils
 from cell_classification.inference import prepare_normalization_dict, predict_fovs
 import tensorflow as tf
@@ -141,7 +141,7 @@ class Nimbus(Application):
         model = PanopticNet(
             backbone=backbone, input_shape=input_shape,
             norm_method="std", num_semantic_classes=[1],
-            create_semantic_head=create_semantic_head, location=False,
+            create_semantic_head=__create_semantic_head, location=False,
         )
         # make sure path can be resolved on any OS and when importing  from anywhere
         self.checkpoint_path = os.path.normpath(

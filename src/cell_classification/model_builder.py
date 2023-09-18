@@ -8,8 +8,8 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import toml
-from deepcell.model_zoo.panopticnet import PanopticNet
-from deepcell.utils.train_utils import count_gpus
+from deepcell.panopticnet import PanopticNet
+from deepcell.utils import count_gpus
 from tensorflow.keras.optimizers import Adam
 from tensorflow.keras.optimizers.schedules import CosineDecay
 from tqdm import tqdm

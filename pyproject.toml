@@ -9,7 +9,6 @@ build-backend = "setuptools.build_meta"
 [project]
 dependencies = [
     "numpy>=1.20",
-    "deepcell>=0.12.5",
     "ark-analysis>=0.6.0",
     "spektral>=1",
     "scikit-image>=0.16",
