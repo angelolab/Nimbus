@@ -3,6 +3,7 @@ from deepcell.semantic_head import create_semantic_head
 from deepcell.application import Application
 from alpineer import io_utils
 from cell_classification.inference import prepare_normalization_dict, predict_fovs
+import checkpoints
 import tensorflow as tf
 import numpy as np
 import json
@@ -148,12 +149,10 @@ class Nimbus(Application):
             "../cell_classification/checkpoints/halfres_512_checkpoint_160000.h5"
         )
         if not os.path.exists(self.checkpoint_path):
-            path = os.path.abspath(__file__)
-            drive, path = os.path.splitdrive(path)
-            self.checkpoint_path = os.path.join(
-                drive, os.sep, *path.split(os.sep)[1:-3], 'checkpoints',
-                'halfres_512_checkpoint_160000.h5'
-            )
+            path = os.path.abspath(checkpoints.__file__)
+            path = os.path.split(path)[0]
+            self.checkpoint_path = os.path.join(path, 'halfres_512_checkpoint_160000.h5')
+
         if os.path.exists(self.checkpoint_path):
             model.load_weights(self.checkpoint_path)
             print("Loaded weights from {}".format(self.checkpoint_path))
