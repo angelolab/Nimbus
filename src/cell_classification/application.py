@@ -154,8 +154,9 @@ class Nimbus(Application):
                 drive, os.sep, *path.split(os.sep)[1:-3], 'checkpoints',
                 'halfres_512_checkpoint_160000.h5'
             )
-        model.load_weights(self.checkpoint_path)
-        print("Loaded weights from {}".format(self.checkpoint_path))
+        if os.path.exists(self.checkpoint_path):
+            model.load_weights(self.checkpoint_path)
+            print("Loaded weights from {}".format(self.checkpoint_path))
         self.model = model
 
     def prepare_normalization_dict(
