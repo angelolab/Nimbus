@@ -6,7 +6,7 @@ import pytest
 import tensorflow as tf
 
 from cell_classification.augmentation_pipeline import (
-    Flip, GaussianBlur, GaussianNoise, LinearContrast, MixUp, Rot90,
+    Flip, GaussianBlur, GaussianNoise, LinearContrast, MixUp, Rot90, Zoom,
     augment_images, get_augmentation_pipeline, prepare_keras_aug,
     prepare_tf_aug, py_aug)
 
@@ -246,6 +246,27 @@ def test_gaussian_blur(batch_num):
     assert not np.array_equal(aug_img, images)
     assert np.array_equal(aug_mask, masks)
     assert np.isclose(np.mean(aug_img), np.mean(images), atol=0.2)
+
+
+@parametrize("batch_num", [2, 4, 8])
+def test_zoom(batch_num):
+    images, _, masks = prepare_data(batch_num, True)
+    zoom = Zoom(1.0, 0.5, 0.5)
+    aug_img, aug_mask = zoom(images, masks)
+
+    # check if right types and shapes are returned
+    assert aug_img.dtype == images.dtype
+    assert aug_mask.dtype == masks.dtype
+    assert aug_img.shape == images.shape
+    assert aug_mask.shape == masks.shape
+
+    # check if data got augmented
+    assert not np.array_equal(aug_img, images)
+    assert not np.array_equal(aug_mask, masks)
+
+    # check if data got zoomed to 0.5
+    assert np.sum(aug_img) == np.sum(images) / 4
+    assert np.sum(aug_mask) == np.sum(masks) / 4
 
 
 @parametrize("batch_num", [2, 4, 8])
