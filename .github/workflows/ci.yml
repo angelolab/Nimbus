@@ -40,19 +40,16 @@ jobs:
     name: Upload Coverage
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout ${{ github.repository }}
+      - name: Checkout ${{github.repository }}
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
 
       - name: Download Coverage Artifact
         uses: actions/download-artifact@v3
-        with:
-          name: coverage
-          path: coverage
- 
+        # if `name` is not specified, all artifacts are downloaded.
+
       - name: Upload Coverage to Coveralls
         uses: coverallsapp/github-action@v2
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          file: ${{ github.workspace }}/coverage/coverage.lcov
