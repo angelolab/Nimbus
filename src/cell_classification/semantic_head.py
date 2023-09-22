@@ -1,5 +1,5 @@
-from deepcell.model_zoo.fpn import semantic_upsample
-from deepcell.utils.misc_utils import get_sorted_keys
+from deepcell.fpn import semantic_upsample
+from deepcell.utils import get_sorted_keys
 from tensorflow.keras import backend as K
 from tensorflow.keras.layers import (Activation, BatchNormalization, Conv2D,
                                      Conv3D, Softmax)

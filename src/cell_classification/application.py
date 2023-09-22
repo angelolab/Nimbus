@@ -141,7 +141,7 @@ class Nimbus(Application):
         model = PanopticNet(
             backbone=backbone, input_shape=input_shape,
             norm_method="std", num_semantic_classes=[1],
-            create_semantic_head=__create_semantic_head, location=False,
+            create_semantic_head=create_semantic_head, location=False,
         )
         # make sure path can be resolved on any OS and when importing  from anywhere
         self.checkpoint_path = os.path.normpath(
