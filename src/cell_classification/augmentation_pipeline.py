@@ -3,8 +3,6 @@ import numpy as np
 import tensorflow as tf
 from imgaug.augmentables.batches import Batch
 from imgaug.augmentables.segmaps import SegmentationMapsOnImage
-from keras.layers.preprocessing.image_preprocessing import (get_zoom_matrix,
-                                                            transform)
 
 
 def augment_images(images, masks, augmentation_pipeline):
@@ -255,68 +253,6 @@ class GaussianBlur(tf.Module):
             image = tf.nn.depthwise_conv2d(image, kernel, strides=[1, 1, 1, 1], padding="SAME")
         if squeeze:
             image = tf.squeeze(image, axis=0)
-        return image, labels
-
-
-class Zoom(tf.Module):
-    """Zoom augmentation"""
-
-    def __init__(self, prob=0.5, min_zoom=0.8, max_zoom=1.2, fill_mode="constant"):
-        """
-        Args:
-            prob (float):
-                The probability of applying the augmentation
-            min_zoom (float):
-                The minimum zoom factor
-            max_zoom (float):
-                The maximum zoom factor
-        """
-        super(Zoom, self).__init__()
-        self.prob = prob
-        self.min_zoom = min_zoom
-        self.max_zoom = max_zoom
-        self.fill_mode = fill_mode
-
-    def __call__(self, image, labels):
-        """Applies zoom
-        Args:
-            image (tf.Tensor):
-                The image to zoom
-            labels (tf.Tensor):
-                The labels
-        Returns:
-            tf.Tensor:
-                The zoomed image
-            tf.Tensor:
-                The labels
-        """
-        if tf.random.uniform(()) < self.prob:
-            zoom_factor = tf.random.uniform([1], self.min_zoom, self.max_zoom)
-            zoom_factor = 1 / zoom_factor
-            zooms = tf.expand_dims(
-                tf.cast(tf.concat([zoom_factor, zoom_factor], axis=0), dtype=tf.float32), 0
-            )
-            squeeze = False
-            if tf.rank(image) == 3:
-                image = tf.expand_dims(image, axis=0)
-                labels = tf.expand_dims(labels, axis=0)
-                squeeze = True
-            _, h, w, _ = image.shape
-            image = transform(
-                image,
-                get_zoom_matrix(zooms, h, w),
-                fill_mode=self.fill_mode,
-                interpolation="bilinear",
-            )
-            labels = transform(
-                labels,
-                get_zoom_matrix(zooms, h, w),
-                fill_mode=self.fill_mode,
-                interpolation="nearest",
-            )
-            if squeeze:
-                image = tf.squeeze(image, axis=0)
-                labels = tf.squeeze(labels, axis=0)
         return image, labels
 
 

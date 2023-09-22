@@ -21,6 +21,7 @@ dependencies = [
     "seaborn>=0.12",
     "alpineer>=0.1.5",
     "natsort>=7.1",
+    "tensorflow>=2.8",
 ]
 name = "cell_classification"
 authors = [{ name = "Angelo Lab", email = "theangelolab@gmail.com" }]
@@ -37,7 +38,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
 dynamic = ["version"]
-urls = { repository = "https://github.com/angelolab/cell_classification" }
+urls = { repository = "https://github.com/angelolab/Nimbus" }
 
 [project.optional-dependencies]
 test = [
