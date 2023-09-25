@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import toml
-from deepcell.utils.train_utils import count_gpus
+from deepcell.utils import count_gpus
 from tqdm import tqdm
 
 from cell_classification.augmentation_pipeline import MixUp, prepare_keras_aug

@@ -9,7 +9,6 @@ build-backend = "setuptools.build_meta"
 [project]
 dependencies = [
     "numpy>=1.20",
-    "deepcell>=0.12.5",
     "ark-analysis>=0.6.0",
     "spektral>=1",
     "scikit-image>=0.16",
@@ -22,6 +21,8 @@ dependencies = [
     "seaborn>=0.12",
     "alpineer>=0.1.5",
     "natsort>=7.1",
+    "tensorflow==2.8",
+    "protobuf<=3.20",
 ]
 name = "cell_classification"
 authors = [{ name = "Angelo Lab", email = "theangelolab@gmail.com" }]
@@ -38,7 +39,7 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Image Processing",
 ]
 dynamic = ["version"]
-urls = { repository = "https://github.com/angelolab/cell_classification" }
+urls = { repository = "https://github.com/angelolab/Nimbus" }
 
 [project.optional-dependencies]
 test = [
