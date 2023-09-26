@@ -31,7 +31,7 @@ Install tensorflow-metal if you have an Apple Silicon GPU
 
 Navigate to the example notebooks and start jupyter
 
-`cd cell_classification/templates`
+`cd Nimbus/templates`
 
 `jupyter notebook`
 
