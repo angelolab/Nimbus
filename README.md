@@ -18,6 +18,7 @@ Make a conda environment for Nimbus and activate it
 `conda activate Nimbus`
 
 Install CUDA libraries if you have a NVIDIA GPU available 
+
 `conda install -c conda-forge cudatoolkit=11.2 cudnn=8.1.0`
 
 Install the package and all depedencies in the conda environment
