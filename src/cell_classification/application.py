@@ -155,6 +155,13 @@ class Nimbus(Application):
             self.checkpoint_path = os.path.join(
                 *path.parts[:-3], 'checkpoints', 'halfres_512_checkpoint_160000.h5'
             )
+        if not os.path.exists(self.checkpoint_path):
+            path = os.path.abspath(cell_classification.__file__)
+            path = Path(path).resolve()
+            self.checkpoint_path = os.path.join(
+                *path.parts[:-3], 'cell_classification', 'checkpoints',
+                'halfres_512_checkpoint_160000.h5'
+            )
 
         if os.path.exists(self.checkpoint_path):
             model.load_weights(self.checkpoint_path)
