@@ -17,11 +17,16 @@ Make a conda environment for Nimbus and activate it
 
 `conda activate Nimbus`
 
+Install CUDA libraries if you have a NVIDIA GPU available 
+`conda install -c conda-forge cudatoolkit=11.2 cudnn=8.1.0`
 
 Install the package and all depedencies in the conda environment
 
 `python -m pip install -e Nimbus`
 
+Install tensorflow-metal if you have an Apple Silicon GPU
+
+`python -m pip install tensorflow-metal`
 
 Navigate to the example notebooks and start jupyter
 
