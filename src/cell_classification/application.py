@@ -166,10 +166,14 @@ class Nimbus(Application):
         if os.path.exists(self.checkpoint_path):
             model.load_weights(self.checkpoint_path)
             print("Loaded weights from {}".format(self.checkpoint_path))
-            print("Current path is {}".format(os.getcwd()))
         else:
-            raise FileNotFoundError("Could not find Nimbus weights at {}."\
-                                    .format(self.checkpoint_path))
+            raise FileNotFoundError("Could not find Nimbus weights at {ckpt_path}. \
+                                    Current path is {current_path}, path to cell_clasification i\
+                                    {p}".format(ckpt_path=self.checkpoint_path,
+                                            current_path=os.getcwd(),
+                                            p=os.path.abspath(cell_classification.__file__)
+                                    )
+            )
         self.model = model
 
     def prepare_normalization_dict(
