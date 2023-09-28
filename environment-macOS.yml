@@ -9,6 +9,5 @@ dependencies:
   - numpy
   - pip:
       - tensorflow==2.13.*
-      - tensorflow-macos==2.13.*
       - tensorflow-metal==1.0.1
       - .
