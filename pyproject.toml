@@ -21,19 +21,20 @@ dependencies = [
     "seaborn>=0.12",
     "alpineer>=0.1.5",
     "natsort>=7.1",
-    "tensorflow==2.8",
-    "protobuf<=3.20",
+    "tensorflow>=2.12",
+    "protobuf",
 ]
 name = "cell_classification"
 authors = [{ name = "Angelo Lab", email = "theangelolab@gmail.com" }]
 description = "Cell classification tool for classifying cells into marker positive and negative for arbitrary markers."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "Modified Apache License 2.0" }
 classifiers = [
     "Development Status :: 4 - Beta",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
     "License :: OSI Approved :: Apache Software License",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Scientific/Engineering :: Image Processing",
