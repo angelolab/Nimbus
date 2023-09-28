@@ -162,16 +162,22 @@ class Nimbus(Application):
                 *path.parts[:-3], 'Nimbus', 'checkpoints',
                 'halfres_512_checkpoint_160000.h5'
             )
+        if not os.path.exists(self.checkpoint_path):
+            self.checkpoint_path = os.path.join(
+                os.getcwd(), 'checkpoints', 'halfres_512_checkpoint_160000.h5'
+            )
 
         if os.path.exists(self.checkpoint_path):
             model.load_weights(self.checkpoint_path)
             print("Loaded weights from {}".format(self.checkpoint_path))
         else:
             raise FileNotFoundError("Could not find Nimbus weights at {ckpt_path}. \
-                                    Current path is {current_path}, path to cell_clasification i\
-                                    {p}".format(ckpt_path=self.checkpoint_path,
-                                            current_path=os.getcwd(),
-                                            p=os.path.abspath(cell_classification.__file__)
+                                    Current path is {current_path} and directory contains {dir_c},\
+                                    path to cell_clasification i{p}".format(
+                                        ckpt_path=self.checkpoint_path,
+                                        current_path=os.getcwd(),
+                                        dir_c=os.listdir(os.getcwd()),
+                                        p=os.path.abspath(cell_classification.__file__)
                                     )
             )
         self.model = model
@@ -221,4 +227,5 @@ class Nimbus(Application):
             os.path.join(self.output_dir,"nimbus_cell_table.csv"), index=False
         )
         return self.cell_table
-        
+
+Nimbus(["none_path"], lambda x: x, "")
