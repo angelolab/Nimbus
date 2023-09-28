@@ -159,13 +159,14 @@ class Nimbus(Application):
             path = os.path.abspath(cell_classification.__file__)
             path = Path(path).resolve()
             self.checkpoint_path = os.path.join(
-                *path.parts[:-3], 'cell_classification', 'checkpoints',
+                *path.parts[:-3], 'Nimbus', 'checkpoints',
                 'halfres_512_checkpoint_160000.h5'
             )
 
         if os.path.exists(self.checkpoint_path):
             model.load_weights(self.checkpoint_path)
             print("Loaded weights from {}".format(self.checkpoint_path))
+            print("Current path is {}".format(os.getcwd()))
         else:
             raise FileNotFoundError("Could not find Nimbus weights at {}."\
                                     .format(self.checkpoint_path))
