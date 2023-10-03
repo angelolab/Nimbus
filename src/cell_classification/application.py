@@ -103,7 +103,8 @@ class Nimbus(Application):
         # exclude segmentation channel from analysis
         seg_name = os.path.basename(self.segmentation_naming_convention(self.fov_paths[0]))
         self.exclude_channels.append(seg_name.split(".")[0])
-        os.makedirs(self.output_dir, exist_ok=True)
+        if self.output_dir is not '':
+            os.makedirs(self.output_dir, exist_ok=True)
         
         # initialize model and parent class
         self.initialize_model()
