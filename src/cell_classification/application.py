@@ -5,6 +5,7 @@ from alpineer import io_utils
 from cell_classification.inference import prepare_normalization_dict, predict_fovs
 import cell_classification
 from pathlib import Path
+from glob import glob
 import tensorflow as tf
 import numpy as np
 import json
@@ -156,12 +157,8 @@ class Nimbus(Application):
                 *path.parts[:-3], 'checkpoints', 'halfres_512_checkpoint_160000.h5'
             )
         if not os.path.exists(self.checkpoint_path):
-            path = os.path.abspath(cell_classification.__file__)
-            path = Path(path).resolve()
-            self.checkpoint_path = os.path.join(
-                *path.parts[:-3], 'Nimbus', 'checkpoints',
-                'halfres_512_checkpoint_160000.h5'
-            )
+            self.checkpoint_path = os.path.abspath(*glob('**/halfres_512_checkpoint_160000.h5'))
+
         if not os.path.exists(self.checkpoint_path):
             self.checkpoint_path = os.path.join(
                 os.getcwd(), 'checkpoints', 'halfres_512_checkpoint_160000.h5'
