@@ -93,12 +93,12 @@ class TestUnetModel:
                                  filters_root=filters_root,
                                  kernel_size=kernel_size,
                                  pool_size=pool_size,
-                                 data_format="channels_first")
+                                 data_format="channels_last")
 
         input_shape = model.get_layer("inputs").output.shape
         assert tuple(input_shape) == (None, channels, nx, ny)
         output_shape = model.get_layer("outputs").output.shape
-        assert tuple(output_shape) == (None, num_classes, 388, 388)
+        assert tuple(output_shape) == (None, 388, 388, num_classes)
 
         filters_per_layer = [filters_root, 128, 256, 512, 1024, 512, 256, 128, filters_root]
         conv2D_layers = _collect_conv2d_layers(model)
