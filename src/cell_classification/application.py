@@ -5,6 +5,7 @@ from alpineer import io_utils
 from cell_classification.inference import prepare_normalization_dict, predict_fovs
 import cell_classification
 from pathlib import Path
+from glob import glob
 import tensorflow as tf
 import numpy as np
 import json
@@ -102,7 +103,8 @@ class Nimbus(Application):
         # exclude segmentation channel from analysis
         seg_name = os.path.basename(self.segmentation_naming_convention(self.fov_paths[0]))
         self.exclude_channels.append(seg_name.split(".")[0])
-        os.makedirs(self.output_dir, exist_ok=True)
+        if self.output_dir is not '':
+            os.makedirs(self.output_dir, exist_ok=True)
         
         # initialize model and parent class
         self.initialize_model()
@@ -155,13 +157,27 @@ class Nimbus(Application):
             self.checkpoint_path = os.path.join(
                 *path.parts[:-3], 'checkpoints', 'halfres_512_checkpoint_160000.h5'
             )
+        if not os.path.exists(self.checkpoint_path):
+            self.checkpoint_path = os.path.abspath(*glob('**/halfres_512_checkpoint_160000.h5'))
+
+        if not os.path.exists(self.checkpoint_path):
+            self.checkpoint_path = os.path.join(
+                os.getcwd(), 'checkpoints', 'halfres_512_checkpoint_160000.h5'
+            )
 
         if os.path.exists(self.checkpoint_path):
             model.load_weights(self.checkpoint_path)
             print("Loaded weights from {}".format(self.checkpoint_path))
         else:
-            raise FileNotFoundError("Could not find Nimbus weights at {}."\
-                                    .format(self.checkpoint_path))
+            raise FileNotFoundError("Could not find Nimbus weights at {ckpt_path}. \
+                                    Current path is {current_path} and directory contains {dir_c},\
+                                    path to cell_clasification i{p}".format(
+                                        ckpt_path=self.checkpoint_path,
+                                        current_path=os.getcwd(),
+                                        dir_c=os.listdir(os.getcwd()),
+                                        p=os.path.abspath(cell_classification.__file__)
+                                    )
+            )
         self.model = model
 
     def prepare_normalization_dict(
@@ -209,4 +225,5 @@ class Nimbus(Application):
             os.path.join(self.output_dir,"nimbus_cell_table.csv"), index=False
         )
         return self.cell_table
-        
+
+Nimbus(["none_path"], lambda x: x, "")
