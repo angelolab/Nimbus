@@ -6,6 +6,46 @@ from tensorflow.keras import layers
 from tensorflow.keras import losses
 import sys
 from src.cell_classification import unet
+import pytest
+
+
+class TestPad2D:
+
+    def test_serialization(self):
+        pad2d = unet.Pad2D(padding=(1, 1), data_format="channels_last")
+        config = pad2d.get_config()
+        new_pad2d = unet.Pad2D.from_config(config)
+
+        assert new_pad2d.padding == pad2d.padding
+        assert new_pad2d.data_format == pad2d.data_format
+
+    def test_padding(self):
+        for data_format in ["channels_last", "channels_first"]:
+            for mode in ["CONSTANT", "REFLECT", "SYMMETRIC"]:
+                print(mode)
+                pad2d = unet.Pad2D(data_format=data_format, mode=mode)
+                if data_format == "channels_last":
+                    input_tensor = np.ones([1, 10, 10, 1])
+                    output_tensor = pad2d(input_tensor)
+                    assert output_tensor.shape == (1, 12, 12, 1)
+                else:
+                    input_tensor = np.ones([1, 1, 10, 10])
+                    output_tensor = pad2d(input_tensor)
+                    assert output_tensor.shape == (1, 1, 12, 12)
+
+            # test for valid padding
+            pad2d = unet.Pad2D(data_format="channels_last", mode="VALID")
+            input_tensor = np.ones([1, 10, 10, 1])
+            output_tensor = pad2d(input_tensor)
+            assert output_tensor.shape == (1, 10, 10, 1)
+
+        # check if error is raised when mode is not valid
+        with pytest.raises(ValueError, match="mode must be"):
+            pad2d = unet.Pad2D(data_format="channels_last", mode="same")
+
+        # check if error is raised when data_format is not valid
+        with pytest.raises(ValueError, match="data_format must be"):
+            pad2d = unet.Pad2D(data_format="channels_in_the_middle", mode="CONSTANT")
 
 
 class TestConvBlock:

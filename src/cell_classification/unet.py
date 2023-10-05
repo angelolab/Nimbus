@@ -25,6 +25,14 @@ class Pad2D(layers.Layer):
         self.mode = mode
         super(Pad2D, self).__init__(**kwargs)
 
+    def get_config(self):
+        """Returns the config of a Pad2D."""
+        return dict(padding=self.padding,
+                    data_format=self.data_format,
+                    mode=self.mode,
+                    **super(Pad2D, self).get_config(),
+                    )
+
     def get_output_shape_for(self, s):
         """Returns the output shape after reflection padding was applied.
         Args:
@@ -48,17 +56,9 @@ class Pad2D(layers.Layer):
             return x
         w_pad,h_pad = self.padding
         if self.data_format == "channels_last":
-            print("Pre padding shape:", x.shape)
-            x1 = tf.pad(x, [[0,0], [h_pad,h_pad], [w_pad,w_pad], [0,0] ], self.mode)
-            print("Post padding shape:", x.shape)
-            # return tf.pad(x, [[0,0], [h_pad,h_pad], [w_pad,w_pad], [0,0] ], self.mode)
-            return x1
+            return tf.pad(x, [[0,0], [h_pad,h_pad], [w_pad,w_pad], [0,0] ], self.mode)
         elif self.data_format == "channels_first":
-            print("Pre padding shape:", x.shape)
-            x1 = tf.pad(x, [[0,0], [0,0], [h_pad,h_pad], [w_pad,w_pad] ], self.mode)
-            print("Post padding shape:", x.shape)
-            #return tf.pad(x, [[0,0], [0,0], [h_pad,h_pad], [w_pad,w_pad] ], self.mode)
-            return x1
+            return tf.pad(x, [[0,0], [0,0], [h_pad,h_pad], [w_pad,w_pad] ], self.mode)
     
 
 class ConvBlock(layers.Layer):
