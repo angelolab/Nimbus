@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers
 from tensorflow.keras import losses
-
+import sys
 from src.cell_classification import unet
 
 
@@ -15,7 +15,7 @@ class TestConvBlock:
                                     filters_root=16,
                                     kernel_size=3,
                                     dropout_rate=0.1,
-                                    padding="same",
+                                    padding="REFLECT",
                                     activation="relu",
                                     name="conv_block_test",
                                     data_format="channels_last")
@@ -37,7 +37,7 @@ class TestUpconvBlock:
 
     def test_serialization(self):
         upconv_block = unet.UpconvBlock(
-            layer_idx=1, filters_root=16, kernel_size=3, pool_size=2, padding="same",
+            layer_idx=1, filters_root=16, kernel_size=3, pool_size=2, padding="REFLECT",
             activation="relu", name="upconv_block_test", data_format="channels_last"
         )
 
@@ -77,14 +77,16 @@ class TestUnetModel:
         assert reconstructed_model is not None
 
     def test_build_model(self):
-        nx = 572
-        ny = 572
+        nx = 512
+        ny = 512
         channels = 3
         num_classes = 2
         kernel_size = 3
         pool_size = 2
         filters_root = 64
         layer_depth = 5
+        # same padding
+        padding = "CONSTANT"
         model = unet.build_model(nx=nx,
                                  ny=ny,
                                  channels=channels,
@@ -93,10 +95,31 @@ class TestUnetModel:
                                  filters_root=filters_root,
                                  kernel_size=kernel_size,
                                  pool_size=pool_size,
+                                 padding=padding,
                                  data_format="channels_last")
 
         input_shape = model.get_layer("inputs").output.shape
-        assert tuple(input_shape) == (None, channels, nx, ny)
+        assert tuple(input_shape) == (None, nx, ny, channels)
+        output_shape = model.get_layer("outputs").output.shape
+        assert tuple(output_shape) == (None, nx, ny, num_classes)
+
+        # valid padding
+        padding = "VALID"
+        nx = 572
+        ny = 572
+        model = unet.build_model(nx=nx,
+                                 ny=ny,
+                                 channels=channels,
+                                 num_classes=num_classes,
+                                 layer_depth=layer_depth,
+                                 filters_root=filters_root,
+                                 kernel_size=kernel_size,
+                                 pool_size=pool_size,
+                                 padding=padding,
+                                 data_format="channels_last")
+
+        input_shape = model.get_layer("inputs").output.shape
+        assert tuple(input_shape) == (None, nx, ny, channels)
         output_shape = model.get_layer("outputs").output.shape
         assert tuple(output_shape) == (None, 388, 388, num_classes)
 

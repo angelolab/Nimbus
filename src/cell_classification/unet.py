@@ -7,12 +7,78 @@ from tensorflow.keras import layers
 from tensorflow.keras.initializers import TruncatedNormal
 
 
-class ConvBlock(layers.Layer):
+class Pad2D(layers.Layer):
+    def __init__(self, padding=(1, 1), data_format="channels_last", mode="VALID", **kwargs):
+        """ Padding for 2D input (e.g. images).
+        Args:
+            padding: tuple of 2 ints, how many zeros to add at the beginning and at the end of
+                the 2 padding dimensions (rows and cols)
+            data_format: channels_last or channels_first
+            mode: "VALID", "CONSTANT", "REFLECT", or "SYMMETRIC"
+        """
+        if data_format not in ["channels_last", "channels_first"]:
+            raise ValueError("data_format must be 'channels_last' or 'channels_first'")
+        if mode not in ["CONSTANT", "REFLECT", "SYMMETRIC", "VALID"]:
+            raise ValueError("Padding mode must be 'VALID', 'CONSTANT', 'REFLECT', or 'SYMMETRIC'")
+        self.padding = tuple(padding)
+        self.data_format = data_format
+        self.mode = mode
+        super(Pad2D, self).__init__(**kwargs)
 
+    def get_output_shape_for(self, s):
+        """Returns the output shape after reflection padding was applied.
+        Args:
+            s: shape tuple, (nb_samples, nb_channels, nb_rows, nb_cols)
+        Returns:
+            tuple of ints
+        """
+        if self.data_format == "channels_last":
+            return (s[0], s[1] + 2 * self.padding[0], s[2] + 2 * self.padding[1], s[3])
+        elif self.data_format == "channels_first":
+            return (s[0], s[1], s[2] + 2 * self.padding[0], s[3] + 2 * self.padding[1])
+
+    def call(self, x):
+        """Apply reflection padding to 2D tensor.
+        Args:
+            x: tensor of shape (nb_samples, nb_channels, nb_rows, nb_cols)
+        Returns:
+            padded 2D tensor
+        """
+        if self.mode == "VALID":
+            return x
+        w_pad,h_pad = self.padding
+        if self.data_format == "channels_last":
+            print("Pre padding shape:", x.shape)
+            x1 = tf.pad(x, [[0,0], [h_pad,h_pad], [w_pad,w_pad], [0,0] ], self.mode)
+            print("Post padding shape:", x.shape)
+            # return tf.pad(x, [[0,0], [h_pad,h_pad], [w_pad,w_pad], [0,0] ], self.mode)
+            return x1
+        elif self.data_format == "channels_first":
+            print("Pre padding shape:", x.shape)
+            x1 = tf.pad(x, [[0,0], [0,0], [h_pad,h_pad], [w_pad,w_pad] ], self.mode)
+            print("Post padding shape:", x.shape)
+            #return tf.pad(x, [[0,0], [0,0], [h_pad,h_pad], [w_pad,w_pad] ], self.mode)
+            return x1
+    
+
+class ConvBlock(layers.Layer):
+    """Convolutional block consisting of two convolutional layers with same number of filters
+    and a dropout layer in between.
+    """
     def __init__(
             self, layer_idx, filters_root, kernel_size, dropout_rate, padding, activation,
             data_format, **kwargs
         ):
+        """Initialize ConvBlock.
+        Args:
+            layer_idx: index of the layer, used to compute the number of filters
+            filters_root: number of filters in the first convolutional layer
+            kernel_size: size of convolutional kernels
+            dropout_rate: rate of dropout
+            padding: padding, either "VALID", "CONSTANT", "REFLECT", or "SYMMETRIC"
+            activation: activation to be used
+            data_format: data format, either "channels_last" or "channels_first"
+        """
         super(ConvBlock, self).__init__(**kwargs)
         self.layer_idx=layer_idx
         self.filters_root=filters_root
@@ -23,40 +89,46 @@ class ConvBlock(layers.Layer):
         self.data_format=data_format
 
         filters = _get_filter_count(layer_idx, filters_root)
+        self.padding_layer = Pad2D(padding=(1, 1), data_format=data_format, mode=padding)
         self.conv2d_1 = layers.Conv2D(filters=filters,
                                       kernel_size=(kernel_size, kernel_size),
                                       kernel_initializer=_get_kernel_initializer(filters, kernel_size),
                                       strides=1,
-                                      padding=padding,
+                                      padding="valid",
                                       data_format=data_format)
         self.dropout_1 = layers.Dropout(rate=dropout_rate)
         self.activation_1 = layers.Activation(activation)
-
         self.conv2d_2 = layers.Conv2D(filters=filters,
                                       kernel_size=(kernel_size, kernel_size),
                                       kernel_initializer=_get_kernel_initializer(filters, kernel_size),
                                       strides=1,
-                                      padding=padding,
+                                      padding="valid",
                                       data_format=data_format)
         self.dropout_2 = layers.Dropout(rate=dropout_rate)
         self.activation_2 = layers.Activation(activation)
 
-    def call(self, inputs, training=None, **kwargs):
+    def call(self, inputs, **kwargs):
+        """Apply ConvBlock to inputs.
+        Args:
+            inputs: input tensor
+        Returns:
+            output tensor
+        """
         x = inputs
+        x = self.padding_layer(x)
         x = self.conv2d_1(x)
 
-        if training:
-            x = self.dropout_1(x)
+        x = self.dropout_1(x)
         x = self.activation_1(x)
+        x = self.padding_layer(x)
         x = self.conv2d_2(x)
-
-        if training:
-            x = self.dropout_2(x)
+        x = self.dropout_2(x)
 
         x = self.activation_2(x)
         return x
 
     def get_config(self):
+        """Returns the config of a ConvBlock."""
         return dict(layer_idx=self.layer_idx,
                     filters_root=self.filters_root,
                     kernel_size=self.kernel_size,
@@ -69,11 +141,22 @@ class ConvBlock(layers.Layer):
 
 
 class UpconvBlock(layers.Layer):
-
+    """Upconvolutional block consisting of an upsampling layer and a convolutional layer.
+    """
     def __init__(
             self, layer_idx, filters_root, kernel_size, pool_size, padding, activation,
             data_format, **kwargs
         ):
+        """UpconvBlock initializer.
+        Args:
+            layer_idx: index of the layer, used to compute the number of filters
+            filters_root: number of filters in the first convolutional layer
+            kernel_size: size of convolutional kernels
+            pool_size: size of the pooling layer
+            padding: padding, either "VALID", "CONSTANT", "REFLECT", or "SYMMETRIC"
+            activation: activation to be used
+            data_format: data format, either "channels_last" or "channels_first"
+        """
         super(UpconvBlock, self).__init__(**kwargs)
         self.layer_idx=layer_idx
         self.filters_root=filters_root
@@ -84,9 +167,10 @@ class UpconvBlock(layers.Layer):
         self.data_format=data_format
 
         filters = _get_filter_count(layer_idx + 1, filters_root)
+        self.padding_layer = Pad2D(padding=(1, 1), data_format=data_format, mode=padding)
         self.upconv = layers.Conv2DTranspose(
             filters // 2,
-            kernel_size=(pool_size, pool_size), strides=pool_size, padding=padding,
+            kernel_size=(pool_size, pool_size), strides=pool_size, padding="valid",
             kernel_initializer=_get_kernel_initializer(filters, kernel_size),
             data_format=data_format
         )
@@ -95,6 +179,7 @@ class UpconvBlock(layers.Layer):
 
     def call(self, inputs, **kwargs):
         x = inputs
+        # x = self.padding_layer(x)
         x = self.upconv(x)
         x = self.activation_1(x)
         return x
@@ -111,25 +196,37 @@ class UpconvBlock(layers.Layer):
                     )
 
 class CropConcatBlock(layers.Layer):
-
+    """CropConcatBlock that makes crops spatial dimensions and concatenates filter maps.
+    """
     def __init__(self, data_format, **kwargs):
+        """CropConcatBlock initializer.
+        Args:
+            data_format: data format, either "channels_last" or "channels_first"
+        """
         super(CropConcatBlock, self).__init__(**kwargs)
         self.data_format = data_format
 
     def call(self, x, down_layer, **kwargs):
+        """Apply CropConcatBlock to inputs.
+        Args:
+            x: input tensor
+            down_layer: tensor from the contracting path
+        Returns:
+            output tensor
+        """
         x1_shape = tf.shape(down_layer)
         x2_shape = tf.shape(x)
 
         if self.data_format == "channels_last":
-            height_diff = (x1_shape[1] - x2_shape[1]) // 2
-            width_diff = (x1_shape[2] - x2_shape[2]) // 2
+            height_diff = tf.abs(x1_shape[1] - x2_shape[1]) // 2 # 64 - 68 = 4 // 2 = 2
+            width_diff = tf.abs(x1_shape[2] - x2_shape[2]) // 2
             down_layer_cropped = down_layer[:,
                                             height_diff: (x2_shape[1] + height_diff),
                                             width_diff: (x2_shape[2] + width_diff), :]
             x = tf.concat([down_layer_cropped, x], axis=-1)
         elif self.data_format == "channels_first":
-            height_diff = (x1_shape[2] - x2_shape[2]) // 2
-            width_diff = (x1_shape[3] - x2_shape[3]) // 2
+            height_diff = tf.abs(x1_shape[2] - x2_shape[2]) // 2
+            width_diff = tf.abs(x1_shape[3] - x2_shape[3]) // 2
             down_layer_cropped = down_layer[:,:,
                                             height_diff: (x2_shape[2] + height_diff),
                                             width_diff: (x2_shape[3] + width_diff)]
@@ -147,7 +244,7 @@ def build_model(nx: Optional[int] = None,
                 kernel_size: int = 3,
                 pool_size: int = 2,
                 dropout_rate: int = 0.5,
-                padding:str="valid",
+                padding:str="VALID",
                 activation:Union[str, Callable]="relu") -> Model:
     """
     Constructs a U-Net model
@@ -162,7 +259,7 @@ def build_model(nx: Optional[int] = None,
     :param kernel_size: size of convolutional layers
     :param pool_size: size of maxplool layers
     :param dropout_rate: rate of dropout
-    :param padding: padding to be used in convolutions
+    :param padding: padding, either "VALID", "CONSTANT", "REFLECT", or "SYMMETRIC"
     :param activation: activation to be used
     :return: A TF Keras model
     """
@@ -203,7 +300,7 @@ def build_model(nx: Optional[int] = None,
                       kernel_size=(1, 1),
                       kernel_initializer=_get_kernel_initializer(filters_root, kernel_size),
                       strides=1,
-                      padding=padding,
+                      padding="valid",
                       data_format=data_format)(x)
 
     x = layers.Activation(activation)(x)
