@@ -63,18 +63,16 @@ class Pad2D(layers.Layer):
 
 class ConvBlock(layers.Layer):
     """Convolutional block consisting of two convolutional layers with same number of filters
-    and a dropout layer in between.
+    and a bn layer in between.
     """
     def __init__(
-            self, layer_idx, filters_root, kernel_size, dropout_rate, padding, activation,
-            data_format, **kwargs
+            self, layer_idx, filters_root, kernel_size, padding, activation, data_format, **kwargs
         ):
         """Initialize ConvBlock.
         Args:
             layer_idx: index of the layer, used to compute the number of filters
             filters_root: number of filters in the first convolutional layer
             kernel_size: size of convolutional kernels
-            dropout_rate: rate of dropout
             padding: padding, either "VALID", "CONSTANT", "REFLECT", or "SYMMETRIC"
             activation: activation to be used
             data_format: data format, either "channels_last" or "channels_first"
@@ -83,7 +81,6 @@ class ConvBlock(layers.Layer):
         self.layer_idx=layer_idx
         self.filters_root=filters_root
         self.kernel_size=kernel_size
-        self.dropout_rate=dropout_rate
         self.padding=padding
         self.activation=activation
         self.data_format=data_format
@@ -96,16 +93,16 @@ class ConvBlock(layers.Layer):
                                       strides=1,
                                       padding="valid",
                                       data_format=data_format)
-        self.dropout_1 = layers.Dropout(rate=dropout_rate)
         self.activation_1 = layers.Activation(activation)
+        self.bn_1 = layers.BatchNormalization(axis=1 if data_format == "channels_first" else -1)
         self.conv2d_2 = layers.Conv2D(filters=filters,
                                       kernel_size=(kernel_size, kernel_size),
                                       kernel_initializer=_get_kernel_initializer(filters, kernel_size),
                                       strides=1,
                                       padding="valid",
                                       data_format=data_format)
-        self.dropout_2 = layers.Dropout(rate=dropout_rate)
         self.activation_2 = layers.Activation(activation)
+        self.bn_2 = layers.BatchNormalization(axis=1 if data_format == "channels_first" else -1)
 
     def call(self, inputs, **kwargs):
         """Apply ConvBlock to inputs.
@@ -117,13 +114,11 @@ class ConvBlock(layers.Layer):
         x = inputs
         x = self.padding_layer(x)
         x = self.conv2d_1(x)
-
-        x = self.dropout_1(x)
+        x = self.bn_1(x)
         x = self.activation_1(x)
         x = self.padding_layer(x)
         x = self.conv2d_2(x)
-        x = self.dropout_2(x)
-
+        x = self.bn_2(x)
         x = self.activation_2(x)
         return x
 
@@ -132,7 +127,6 @@ class ConvBlock(layers.Layer):
         return dict(layer_idx=self.layer_idx,
                     filters_root=self.filters_root,
                     kernel_size=self.kernel_size,
-                    dropout_rate=self.dropout_rate,
                     padding=self.padding,
                     activation=self.activation,
                     data_format=self.data_format,
@@ -243,7 +237,6 @@ def build_model(nx: Optional[int] = None,
                 filters_root: int = 64,
                 kernel_size: int = 3,
                 pool_size: int = 2,
-                dropout_rate: int = 0.5,
                 padding:str="VALID",
                 activation:Union[str, Callable]="relu") -> Model:
     """
@@ -258,7 +251,6 @@ def build_model(nx: Optional[int] = None,
     :param filters_root: number of filters in top unet layer
     :param kernel_size: size of convolutional layers
     :param pool_size: size of maxplool layers
-    :param dropout_rate: rate of dropout
     :param padding: padding, either "VALID", "CONSTANT", "REFLECT", or "SYMMETRIC"
     :param activation: activation to be used
     :return: A TF Keras model
@@ -273,7 +265,6 @@ def build_model(nx: Optional[int] = None,
 
     conv_params = dict(filters_root=filters_root,
                        kernel_size=kernel_size,
-                       dropout_rate=dropout_rate,
                        padding=padding,
                        activation=activation,
                        data_format=data_format)

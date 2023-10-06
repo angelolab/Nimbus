@@ -171,6 +171,12 @@ def test_prep_model(config_params):
         trainer.prep_model()
         assert trainer.params["model_path"] == os.path.join(temp_dir, "test_dir", "test.h5")
 
+        # test vanilla unet
+        config_params["model"] = "VanillaUNet"
+        trainer = ModelBuilder(config_params)
+        trainer.prep_model()
+        assert isinstance(trainer.model, tf.keras.Model)
+
 
 def test_train_step(config_params):
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -203,6 +209,18 @@ def test_train_step(config_params):
         loss = trainer.train_step(trainer.model, x, y)
         assert loss.dtype == tf.float32
         assert loss > 0
+
+        # check with vanilla unet
+        config_params["model"] = "VanillaUNet"
+        trainer = ModelBuilder(config_params)
+        trainer.prep_data()
+        trainer.prep_model()
+        trainer.train_dataset = trainer.train_dataset.map(
+            trainer.prep_batches, num_parallel_calls=tf.data.AUTOTUNE
+        )
+        x, y = next(iter(trainer.train_dataset))
+        loss = trainer.train_step(trainer.model, x, y)
+        assert loss.dtype == tf.float32
 
 
 def test_train(config_params):

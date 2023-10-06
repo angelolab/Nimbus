@@ -54,7 +54,6 @@ class TestConvBlock:
         conv_block = unet.ConvBlock(layer_idx=1,
                                     filters_root=16,
                                     kernel_size=3,
-                                    dropout_rate=0.1,
                                     padding="REFLECT",
                                     activation="relu",
                                     name="conv_block_test",
@@ -66,7 +65,6 @@ class TestConvBlock:
         assert new_conv_block.layer_idx == conv_block.layer_idx
         assert new_conv_block.filters_root == conv_block.filters_root
         assert new_conv_block.kernel_size == conv_block.kernel_size
-        assert new_conv_block.dropout_rate == conv_block.dropout_rate
         assert new_conv_block.padding == conv_block.padding
         assert new_conv_block.activation == conv_block.activation
         assert new_conv_block.activation == conv_block.activation
