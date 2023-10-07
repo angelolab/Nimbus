@@ -2,7 +2,7 @@ import argparse
 import json
 import os
 from time import time
-
+from cell_classification.unet import build_model
 import h5py
 import numpy as np
 import pandas as pd
@@ -179,6 +179,12 @@ class ModelBuilder:
                         1, (3, 3), input_shape=self.params["input_shape"], padding="same",
                         name="semantic_head", activation="sigmoid", data_format="channels_last",
                     )]
+            )
+        elif self.params["backbone"] == "VanillaUNet":
+            self.model = build_model(
+                nx=self.params["input_shape"][0], ny=self.params["input_shape"][1],
+                channels=self.params["input_shape"][2], num_classes=self.params["classes"],
+                data_format="channels_last", padding="REFLECT"
             )
         else:
             self.model = PanopticNet(
