@@ -504,3 +504,25 @@ def test_fov_filter(config_params):
             for example in dataset_filtered:
                 fov_list.append(example["folder_name"].numpy().decode())
             assert set(fov) == set(fov_list)
+
+
+def dset_marker_filter(config_params):
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        data_prep, _, _, _ = prep_object_and_inputs(tmp_dir)
+        data_prep.tf_record_path = tmp_dir
+        data_prep.make_tf_record()
+        tf_record_path = os.path.join(data_prep.tf_record_path, data_prep.dataset + ".tfrecord")
+        config_params["record_path"] = [tf_record_path]
+        config_params["path"] = tmp_dir
+        config_params["experiment"] = "test"
+        config_params["dataset_names"] = ["test1"]
+        config_params["num_steps"] = 5
+        config_params["batch_size"] = 1
+        config_params["exclude_dset_marker_dict"] = {"test1": ["CD4"]}
+        trainer = ModelBuilder(config_params)
+        dataset = tf.data.TFRecordDataset(tf_record_path)
+        dataset = dataset.map(lambda x: tf.io.parse_single_example(x, feature_description))
+        dataset = dataset.map(parse_dict)
+        dataset_filtered = trainer.dset_marker_filter(dataset)
+        for example in dataset_filtered:
+            assert example["marker"].numpy().decode() != "CD4"        
