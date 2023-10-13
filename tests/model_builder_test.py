@@ -522,3 +522,46 @@ def test_fov_filter(config_params):
             for example in dataset_filtered:
                 fov_list.append(example["folder_name"].numpy().decode())
             assert set(fov) == set(fov_list)
+
+
+def dset_marker_filter(config_params):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        tf_record_paths = []
+        for i in range(2):
+            data_prep, _, _, _ = prep_object_and_inputs(
+                temp_dir, dataset="testdata_{}".format(i), num_folders=10,
+                scale=[0.5, 1.0, 1.5, 2.0, 5.0]*2
+            )
+            data_prep.tf_record_path = temp_dir
+            data_prep.make_tf_record()
+            tf_record_path = os.path.join(
+                data_prep.tf_record_path, "testdata_{}.tfrecord".format(i)
+            )
+            tf_record_paths.append(tf_record_path)
+        config_params["record_path"] = tf_record_paths
+        config_params["dataset_names"] = ["test1", "test2"]
+        config_params["dataset_sample_probs"] = [0.5, 0.5]
+        config_params["path"] = temp_dir
+        config_params["experiment"] = "test"
+        config_params["num_steps"] = 20
+        config_params["num_validation"] = [2, 2]
+        config_params["num_test"] = [2, 2]
+        config_params["batch_size"] = 2
+        config_params["exclude_dset_marker_dict"] = {"test1": ["CD4"]}
+        trainer = ModelBuilder(config_params)
+        # check if CD4 is filtered for dataset test1
+        dataset = tf.data.TFRecordDataset(tf_record_paths[0])
+        dataset = dataset.map(lambda x: tf.io.parse_single_example(x, feature_description))
+        dataset = dataset.map(parse_dict)
+        dataset_filtered = trainer.dset_marker_filter(dataset)
+        for example in dataset_filtered:
+            assert example["marker"].numpy().decode() != "CD4"
+        # check if CD4 is not filtered for dataset test2
+        dataset = tf.data.TFRecordDataset(tf_record_paths[1])
+        dataset = dataset.map(lambda x: tf.io.parse_single_example(x, feature_description))
+        dataset = dataset.map(parse_dict)
+        dataset_filtered = trainer.dset_marker_filter(dataset)
+        markers = []
+        for example in dataset_filtered:
+            markers.append(example["marker"].numpy().decode())
+        assert "CD4" in markers
