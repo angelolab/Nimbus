@@ -64,6 +64,12 @@ class ModelBuilder:
                 self.quantile_filter(dataset, record_path) for dataset, record_path in
                 zip(datasets, self.params["record_path"])
             ]
+        # select markers for training if put into config file
+        if "exclude_dset_marker_dict" in self.params.keys():
+            datasets = [
+                self.dset_marker_filter(
+                    dataset, self.params["exclude_dset_marker_dict"]) for dataset in datasets
+            ]
 
         # split into train, validation and test
         if "data_splits" in self.params.keys():
@@ -582,6 +588,37 @@ class ModelBuilder:
                     True if the fov is in fov_list
             """
             return tf.reduce_any(tf.equal(example[fov_key], fov_list))
+        dataset = dataset.filter(predicate)
+        return dataset
+
+    def dset_marker_filter(self, dataset, exclude_dset_marker_dict):
+        """Filter out training examples that are in the exclude_dset_marker_dict and return a copy
+        of the dataset
+        Args:
+            dataset (tf.data.Dataset):
+                Dataset to filter
+            exclude_dset_marker_dict (dict):
+                Maps datasets as keys to lists of markers to exclude, i.e. {"dset1": ["marker1"]}
+        Returns:
+            dataset (tf.data.Dataset):
+                Filtered dataset
+        """
+
+        def predicate(example):
+            """Helper function that returns true if the marker is in marker_list
+            Args:
+                example (dict):
+                    Example dictionary
+            Returns:
+                tf.Tensor:
+                    True if the marker is in marker_list
+            """
+            return tf.logical_not(tf.logical_and(
+                tf.equal(example["dataset"], list(exclude_dset_marker_dict.keys())),
+                tf.reduce_any(
+                    tf.equal(example["marker"], exclude_dset_marker_dict[example["dataset"]]),
+                )
+            ))
         dataset = dataset.filter(predicate)
         return dataset
 
