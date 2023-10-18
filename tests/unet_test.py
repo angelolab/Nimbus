@@ -138,7 +138,7 @@ class TestUnetModel:
 
         input_shape = model.get_layer("inputs").output.shape
         assert tuple(input_shape) == (None, nx, ny, channels)
-        output_shape = model.get_layer("outputs").output.shape
+        output_shape = model.get_layer("semantic_head").output.shape
         assert tuple(output_shape) == (None, nx, ny, num_classes)
 
         # valid padding
@@ -158,7 +158,7 @@ class TestUnetModel:
 
         input_shape = model.get_layer("inputs").output.shape
         assert tuple(input_shape) == (None, nx, ny, channels)
-        output_shape = model.get_layer("outputs").output.shape
+        output_shape = model.get_layer("semantic_head").output.shape
         assert tuple(output_shape) == (None, 388, 388, num_classes)
 
         filters_per_layer = [filters_root, 128, 256, 512, 1024, 512, 256, 128, filters_root]

@@ -294,8 +294,7 @@ def build_model(nx: Optional[int] = None,
                       padding="valid",
                       data_format=data_format)(x)
 
-    x = layers.Activation(activation)(x)
-    outputs = layers.Activation("softmax", name="outputs")(x)
+    outputs = layers.Activation("sigmoid", name="semantic_head")(x)
     model = Model(inputs, outputs, name="unet")
 
     return model
