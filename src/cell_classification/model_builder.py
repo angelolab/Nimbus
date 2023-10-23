@@ -3,6 +3,7 @@ import json
 import os
 from time import time
 from cell_classification.unet import build_model
+from cell_classification.inference import segment_mean
 import h5py
 import numpy as np
 import pandas as pd
@@ -189,7 +190,7 @@ class ModelBuilder:
         elif self.params["backbone"] == "VanillaUNet":
             self.model = build_model(
                 nx=self.params["input_shape"][0], ny=self.params["input_shape"][1],
-                channels=self.params["input_shape"][2], num_classes=self.params["classes"],
+                channels=self.params["input_shape"][2], num_classes=1,
                 data_format="channels_last", padding="REFLECT"
             )
         else:
@@ -591,36 +592,85 @@ class ModelBuilder:
         dataset = dataset.filter(predicate)
         return dataset
 
-    def dset_marker_filter(self, dataset, exclude_dset_marker_dict):
+    def dset_marker_filter(self, dataset, exclude_dset_marker):
         """Filter out training examples that are in the exclude_dset_marker_dict and return a copy
         of the dataset
         Args:
             dataset (tf.data.Dataset):
                 Dataset to filter
-            exclude_dset_marker_dict (dict):
-                Maps datasets as keys to lists of markers to exclude, i.e. {"dset1": ["marker1"]}
+            exclude_dset_marker (list):
+                List containing dataset and marker pairs to exclude [[d1, d2], [m1, m2]]
         Returns:
             dataset (tf.data.Dataset):
                 Filtered dataset
         """
-
-        def predicate(example):
+        
+        def predicate(dataset, marker):
             """Helper function that returns true if the marker is in marker_list
             Args:
-                example (dict):
-                    Example dictionary
+                dataset (tf.Tensor):
+                    Dataset name of the example
+                marker (tf.Tensor):
+                    Marker name of the example
             Returns:
-                tf.Tensor:
+                bool:
                     True if the marker is in marker_list
             """
+            dataset = tf.get_static_value(dataset).decode("utf-8")
+            marker = tf.get_static_value(marker).decode("utf-8")
             return tf.logical_not(tf.logical_and(
-                tf.equal(example["dataset"], list(exclude_dset_marker_dict.keys())),
-                tf.reduce_any(
-                    tf.equal(example["marker"], exclude_dset_marker_dict[example["dataset"]]),
+                tf.reduce_any(tf.equal(dataset,
+                                       exclude_dset_marker[0])
+                ),
+                tf.reduce_any(tf.equal(marker,
+                                       exclude_dset_marker[1])
                 )
             ))
-        dataset = dataset.filter(predicate)
+        for example in dataset:
+            break
+
+        dataset = dataset.filter(
+            lambda example: tf.py_function(
+                predicate, [example["dataset"], example["marker"]], tf.bool
+            )
+        )
         return dataset
+
+
+    def predict_dataset_list(self, datasets, save_predictions=True, fname="predictions"):
+        """Runs predictions on a list of datasets and returns results as a dataframe
+        Args:
+            datasets (list): List of tf.data.Datasets to run predictions on
+            save_predictions (bool): Whether to save the predictions to a file
+            fname (str): Name of the file to save the predictions to
+        Returns:
+            df (pd.DataFrame): Dataframe containing the predictions
+        """
+        self.load_model(self.params["model_path"])
+        print("Loaded model from", self.params["model_path"])
+
+        df_list = []
+        for dataset in datasets:
+            dataset = dataset.prefetch(tf.data.AUTOTUNE)
+            for example in dataset:
+                x_batch, _ = self.prep_batches(example)
+                prediction = self.predict(x_batch)
+                
+                for i, df in enumerate(example["activity_df"].numpy()):
+                    df = pd.read_json(df.decode())
+                    cell_ids, mean_per_cell = segment_mean(
+                        example["instance_mask"][i:i+1], prediction[i:i+1]
+                    )
+                    pred_df = pd.DataFrame({"labels": cell_ids, "prediction": mean_per_cell})
+                    df = df.merge(pred_df, on="labels", how="left")
+                    df["fov"] = [example["folder_name"].numpy()[i].decode()] * len(df)
+                    df["dataset"] = [example["dataset"].numpy()[i].decode()] * len(df)
+                    df["marker"] = [example["marker"].numpy()[i].decode()] * len(df)
+                    df_list.append(df)
+        df = pd.concat(df_list)
+        if save_predictions:
+            df.to_csv(os.path.join(self.params["model_dir"], fname+".csv"))
+        return df
 
 
 if __name__ == "__main__":
