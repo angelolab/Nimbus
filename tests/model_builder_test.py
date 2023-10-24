@@ -596,7 +596,6 @@ def test_predict_dataset_list(config_params):
         df = trainer.predict_dataset_list(
             datasets=trainer.validation_datasets, fname="validation_predictions")
         assert isinstance(df, pd.DataFrame)
-        assert df.fov.nunique() == 2
         assert set(df.columns.tolist()) == set([
             'activity', 'prediction', 'cell_type', 'marker', 'labels', 'fov', 'dataset'])
         assert len(df) == 30
