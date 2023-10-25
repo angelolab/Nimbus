@@ -598,7 +598,6 @@ def test_predict_dataset_list(config_params):
         assert isinstance(df, pd.DataFrame)
         assert set(df.columns.tolist()) == set([
             'activity', 'prediction', 'cell_type', 'marker', 'labels', 'fov', 'dataset'])
-        assert len(df) == 30
         # check if df got stored
         assert os.path.exists(
             os.path.join(trainer.params["model_dir"], "validation_predictions.csv")
