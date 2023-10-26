@@ -635,19 +635,26 @@ class ModelBuilder:
             )
         )
         return dataset
+    
 
-
-    def predict_dataset_list(self, datasets, save_predictions=True, fname="predictions"):
+    def predict_dataset_list(
+            self, datasets, save_predictions=True, fname="predictions", ckpt_path=None
+        ):
         """Runs predictions on a list of datasets and returns results as a dataframe
         Args:
             datasets (list): List of tf.data.Datasets to run predictions on
             save_predictions (bool): Whether to save the predictions to a file
             fname (str): Name of the file to save the predictions to
+            ckpt_path (str): Path to the model checkpoint file
         Returns:
             df (pd.DataFrame): Dataframe containing the predictions
         """
-        self.load_model(self.params["model_path"])
-        print("Loaded model from", self.params["model_path"])
+        if ckpt_path:
+            self.load_model(ckpt_path)
+            print("Loaded model from", ckpt_path)
+        else:
+            self.load_model(self.params["model_path"])
+            print("Loaded model from", self.params["model_path"])
 
         df_list = []
         for dataset in datasets:
