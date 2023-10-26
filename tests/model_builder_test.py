@@ -524,7 +524,7 @@ def test_fov_filter(config_params):
             assert set(fov) == set(fov_list)
 
 
-def dset_marker_filter(config_params):
+def test_dset_marker_filter(config_params):
     with tempfile.TemporaryDirectory() as temp_dir:
         tf_record_paths = []
         for i in range(2):
@@ -547,21 +547,58 @@ def dset_marker_filter(config_params):
         config_params["num_validation"] = [2, 2]
         config_params["num_test"] = [2, 2]
         config_params["batch_size"] = 2
-        config_params["exclude_dset_marker_dict"] = {"test1": ["CD4"]}
+        config_params["exclude_dset_marker"] = [["testdata_0"], ["CD4"]]
         trainer = ModelBuilder(config_params)
         # check if CD4 is filtered for dataset test1
         dataset = tf.data.TFRecordDataset(tf_record_paths[0])
         dataset = dataset.map(lambda x: tf.io.parse_single_example(x, feature_description))
         dataset = dataset.map(parse_dict)
-        dataset_filtered = trainer.dset_marker_filter(dataset)
+        dataset_filtered = trainer.dset_marker_filter(
+            dataset, config_params["exclude_dset_marker"]
+        )
         for example in dataset_filtered:
             assert example["marker"].numpy().decode() != "CD4"
         # check if CD4 is not filtered for dataset test2
         dataset = tf.data.TFRecordDataset(tf_record_paths[1])
         dataset = dataset.map(lambda x: tf.io.parse_single_example(x, feature_description))
         dataset = dataset.map(parse_dict)
-        dataset_filtered = trainer.dset_marker_filter(dataset)
+        exclude_dset_marker = [["testdata_0"], ["CD4"]]
+        dataset_filtered = trainer.dset_marker_filter(dataset, exclude_dset_marker)
         markers = []
         for example in dataset_filtered:
             markers.append(example["marker"].numpy().decode())
         assert "CD4" in markers
+
+
+def test_predict_dataset_list(config_params):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        data_prep, _, _, _ = prep_object_and_inputs(
+            temp_dir, dataset="testdata", num_folders=10,
+            scale=[0.5, 1.0, 1.5, 2.0, 5.0]*2
+        )
+        data_prep.tf_record_path = temp_dir
+        data_prep.make_tf_record()
+        tf_record_path = os.path.join(
+            data_prep.tf_record_path, "testdata.tfrecord"
+        )
+        config_params["record_path"] = [tf_record_path]
+        config_params["dataset_names"] = ["test1"]
+        config_params["dataset_sample_probs"] = [0.5]
+        config_params["path"] = temp_dir
+        config_params["experiment"] = "test"
+        config_params["num_validation"] = [2]
+        config_params["batch_size"] = 2
+        config_params["model_path"] = os.path.join(temp_dir, "test.pkl")
+        trainer = ModelBuilder(config_params)
+        trainer.prep_model()
+        trainer.prep_data()
+        trainer.model.save_weights(config_params["model_path"])
+        df = trainer.predict_dataset_list(
+            datasets=trainer.validation_datasets, fname="validation_predictions")
+        assert isinstance(df, pd.DataFrame)
+        assert set(df.columns.tolist()) == set([
+            'activity', 'prediction', 'cell_type', 'marker', 'labels', 'fov', 'dataset'])
+        # check if df got stored
+        assert os.path.exists(
+            os.path.join(trainer.params["model_dir"], "validation_predictions.csv")
+        )
