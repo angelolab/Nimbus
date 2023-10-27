@@ -31,8 +31,6 @@ from tensorflow.keras import activations
 from tensorflow.keras import constraints
 from tensorflow.keras import initializers
 from tensorflow.keras import regularizers
-from keras.utils import conv_utils
-
 logger = tf.get_logger()
 
 
@@ -52,7 +50,7 @@ class UpsampleLike(Layer):
 
     def __init__(self, data_format=None, **kwargs):
         super().__init__(**kwargs)
-        self.data_format = conv_utils.normalize_data_format(data_format)
+        self.data_format = data_format
 
     def _resize_drop_axis(self, image, size, axis):
         image_shape = tf.shape(image)
@@ -211,7 +209,7 @@ class ImageNormalization2D(Layer):
 
         self.filter_size = filter_size
         self.norm_method = norm_method
-        self.data_format = conv_utils.normalize_data_format(data_format)
+        self.data_format = data_format
 
         if self.data_format == 'channels_first':
             self.channel_axis = 1
@@ -343,7 +341,7 @@ class Location2D(Layer):
             logger.warn('in_shape (from deepcell.layerse.location) is '
                         'deprecated and will be removed in a future version.')
         super().__init__(**kwargs)
-        self.data_format = conv_utils.normalize_data_format(data_format)
+        self.data_format = data_format
 
     def compute_output_shape(self, input_shape):
         input_shape = tensor_shape.TensorShape(input_shape).as_list()
@@ -406,7 +404,7 @@ class Location3D(Layer):
             logger.warn('in_shape (from deepcell.layerse.location) is '
                         'deprecated and will be removed in a future version.')
         super().__init__(**kwargs)
-        self.data_format = conv_utils.normalize_data_format(data_format)
+        self.data_format = data_format
 
     def compute_output_shape(self, input_shape):
         input_shape = tensor_shape.TensorShape(input_shape).as_list()
