@@ -6,30 +6,6 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import auc, confusion_matrix, roc_curve
 
-from cell_classification.model_builder import ModelBuilder
-from cell_classification.promix_naive import PromixNaive
-
-
-def load_model(params):
-    """Load model and validation data from params dict
-    Args:
-        params (dict):
-            dictionary containing model and validation data paths
-    Returns:
-        model (ModelBuilder):
-            trained model
-        val_data (tf.data.Dataset):
-            validation dataset
-    """
-    params["eval"] = True
-    if params["model"] == "ModelBuilder":
-        model = ModelBuilder(params)
-    elif params["model"] == "PromixNaive":
-        model = PromixNaive(params)
-    model.prep_data()
-    model.load_model(params["model_path"])
-    return model
-
 
 def calc_roc(pred_list, gt_key="marker_activity_mask", pred_key="prediction", cell_level=False):
     """Calculate ROC curve

@@ -353,6 +353,27 @@ class PromixNaive(ModelBuilder):
         return selected_subset
 
 
+def load_model(params):
+    """Load model and validation data from params dict
+    Args:
+        params (dict):
+            dictionary containing model and validation data paths
+    Returns:
+        model (ModelBuilder):
+            trained model
+        val_data (tf.data.Dataset):
+            validation dataset
+    """
+    params["eval"] = True
+    if params["model"] == "ModelBuilder":
+        model = ModelBuilder(params)
+    elif params["model"] == "PromixNaive":
+        model = PromixNaive(params)
+    model.prep_data()
+    model.load_model(params["model_path"])
+    return model
+
+
 if __name__ == "__main__":
     print("CUDA_VISIBLE_DEVICES: " + str(os.getenv("CUDA_VISIBLE_DEVICES")))
     parser = argparse.ArgumentParser()

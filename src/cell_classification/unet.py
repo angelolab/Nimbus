@@ -87,6 +87,12 @@ class ConvBlock(layers.Layer):
 
         filters = _get_filter_count(layer_idx, filters_root)
         self.padding_layer = Pad2D(padding=(1, 1), data_format=data_format, mode=padding)
+        self.conv2d_0 = layers.Conv2D(filters=filters,
+                                      kernel_size=(1, 1),
+                                      kernel_initializer=HeNormal(),
+                                      strides=1,
+                                      padding="valid",
+                                      data_format=data_format)
         self.conv2d_1 = layers.Conv2D(filters=filters,
                                       kernel_size=(kernel_size, kernel_size),
                                       kernel_initializer=_get_kernel_initializer(filters, kernel_size),
@@ -103,6 +109,7 @@ class ConvBlock(layers.Layer):
                                       data_format=data_format)
         self.activation_2 = layers.Activation(activation)
         self.bn_2 = layers.BatchNormalization(axis=1 if data_format == "channels_first" else -1)
+        self.add = layers.Add()
 
     def call(self, inputs, **kwargs):
         """Apply ConvBlock to inputs.
@@ -111,8 +118,8 @@ class ConvBlock(layers.Layer):
         Returns:
             output tensor
         """
-        x = inputs
-        x = self.padding_layer(x)
+        skip = self.conv2d_0(inputs)
+        x = self.padding_layer(skip)
         x = self.conv2d_1(x)
         x = self.bn_1(x)
         x = self.activation_1(x)
@@ -120,6 +127,7 @@ class ConvBlock(layers.Layer):
         x = self.conv2d_2(x)
         x = self.bn_2(x)
         x = self.activation_2(x)
+        x = self.add([x, skip])
         return x
 
     def get_config(self):

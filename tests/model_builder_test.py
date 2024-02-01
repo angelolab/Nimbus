@@ -2,6 +2,8 @@ import json
 import os
 import tempfile
 
+import wandb
+import time
 import h5py
 import numpy as np
 import pandas as pd
@@ -268,7 +270,7 @@ def test_tensorboard_callbacks(config_params):
         config_params["path"] = temp_dir
         config_params["experiment"] = "test"
         config_params["dataset_names"] = ["test1"]
-        config_params["num_steps"] = 6
+        config_params["num_steps"] = 6 
         config_params["dataset_sample_probs"] = [1.0]
         config_params["num_validation"] = [2]
         config_params["num_test"] = [2]
@@ -278,12 +280,12 @@ def test_tensorboard_callbacks(config_params):
         config_params["snap_steps"] = 5
         config_params["val_steps"] = 5
 
+
         trainer = ModelBuilder(config_params)
         trainer.train()
-
+        wandb.finish()
         # check if loss history is written to file
-        assert "tfevents" in os.listdir(trainer.params["log_dir"])[0]
-
+        assert "wandb" in os.listdir(trainer.params["log_dir"])[0]
         # check if model checkpoint is written to file
         assert os.path.split(trainer.params["model_path"])[-1] in os.listdir(
             trainer.params["model_dir"]
