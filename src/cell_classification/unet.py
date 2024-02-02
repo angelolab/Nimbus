@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras import Model, Input
 from tensorflow.keras import layers
-from tensorflow.keras.initializers import TruncatedNormal
+from tensorflow.keras.initializers import TruncatedNormal, HeNormal
 
 
 class Pad2D(layers.Layer):

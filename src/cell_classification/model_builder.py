@@ -51,14 +51,6 @@ class ModelBuilder:
         os.makedirs(self.params["model_dir"], exist_ok=True)
         os.makedirs(self.params["log_dir"], exist_ok=True)
 
-        wandb.init(
-                name=params["experiment"],
-                project=params["project"],
-                entity="kainmueller-lab",
-                config=params,
-                dir=params["log_dir"],
-                mode=params["logging_mode"]
-        )
 
     def prep_data(self):
         """Prepares training and validation data"""
@@ -242,6 +234,15 @@ class ModelBuilder:
         # initialize data and model
         self.prep_data()
 
+        wandb.init(
+                name=self.params["experiment"],
+                project=self.params["project"],
+                entity="kainmueller-lab",
+                config=self.params,
+                dir=self.params["log_dir"],
+                mode=self.params["logging_mode"]
+        )
+
         # make transformations on the training dataset
         augmentation_pipeline = get_augmentation_pipeline(self.params)
         tf_aug = prepare_tf_aug(augmentation_pipeline)
@@ -280,6 +281,7 @@ class ModelBuilder:
                 self.tensorboard_callbacks(x, y)
                 if self.step > self.params["num_steps"]:
                     break
+        wandb.finish()
 
     def tensorboard_callbacks(self, x, y):
         """Logs training metrics to Tensorboard

@@ -21,7 +21,9 @@ dependencies = [
     "seaborn>=0.12",
     "alpineer>=0.1.5",
     "natsort>=7.1",
-    "tensorflow",
+    "tensorflow~=2.8.0",
+    "tensorflow_addons~=0.16.1",
+    "pydot>=1.4.2,<2",
     "protobuf",
     "wandb"
 ]

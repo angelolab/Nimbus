@@ -7,6 +7,7 @@ import tensorflow as tf
 import toml
 from deepcell.utils import count_gpus
 from tqdm import tqdm
+import wandb
 
 from cell_classification.augmentation_pipeline import MixUp, prepare_keras_aug
 from cell_classification.model_builder import ModelBuilder
@@ -140,6 +141,15 @@ class PromixNaive(ModelBuilder):
         print("Training on", self.num_gpus, "GPUs.")
         # initialize data and model
         self.prep_data()
+        wandb.init(
+                name=self.params["experiment"],
+                project=self.params["project"],
+                entity="kainmueller-lab",
+                config=self.params,
+                dir=self.params["log_dir"],
+                mode=self.params["logging_mode"]
+        )
+
         self.prep_model()
         self.matched_high_confidence_selection_thresholds()
         train_step = self.train_step

@@ -5,7 +5,7 @@ import tensorflow as tf
 from tensorflow.keras import layers
 from tensorflow.keras import losses
 import sys
-from src.cell_classification import unet
+from cell_classification import unet
 import pytest
 
 
