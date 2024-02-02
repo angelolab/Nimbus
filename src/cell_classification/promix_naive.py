@@ -159,7 +159,6 @@ class PromixNaive(ModelBuilder):
 
         with open(os.path.join(self.params["model_dir"], "params.toml"), "w") as f:
             toml.dump(self.params, f)
-        self.summary_writer = tf.summary.create_file_writer(self.params["log_dir"])
         self.step = 0
         self.global_val_loss = []
         self.val_loss_history = {}
@@ -213,22 +212,18 @@ class PromixNaive(ModelBuilder):
                     break
                 # custom tensorboard callbacks
                 if self.step % self.params["snap_steps"] == 0:
-                    with self.summary_writer.as_default():
-                        tf.summary.text("marker", batch["marker"][0], step=self.step)
-                        tf.summary.image(
-                            "loss_mask",
+                    log_dict = {}
+                    for key in list(self.class_wise_loss_quantiles.keys()):
+                        for class_ in ["positive", "negative"]:
+                            log_dict["loss_quantiles/" + key + "_" + class_[:3]] = \
+                                self.class_wise_loss_quantiles[key][class_]
+                    log_dict["quantile_thresh"] = self.quantile
+                    wandb.log({
+                        "loss_mask": wandb.Image(
                             tf.cast(loss_mask_aug[:1, ...], tf.float32)
-                            - tf.math.abs(x_aug[:1, ..., 1:2] * -1) * 0.25,
-                            step=self.step,
-                        )
-                        for key in list(self.class_wise_loss_quantiles.keys()):
-                            for class_ in ["positive", "negative"]:
-                                tf.summary.scalar(
-                                    key + "_" + class_[:3],
-                                    self.class_wise_loss_quantiles[key][class_],
-                                    step=self.step,
-                                )
-                        tf.summary.scalar("quantile_thresh", self.quantile, step=self.step)
+                            - tf.math.abs(x_aug[:1, ..., 1:2] * -1) * 0.25),
+                        "step": self.step
+                    }.update(log_dict))
                     # save self.class_wise_loss_quantiles as toml
                     with open(
                         os.path.join(self.params["log_dir"], "loss_quantiles.toml"), "w"
@@ -240,6 +235,7 @@ class PromixNaive(ModelBuilder):
                     )
                     print("Saving model to", model_fname)
                     self.model.save_weights(model_fname)
+        wandb.finish()
 
     @staticmethod
     @tf.autograph.experimental.do_not_convert
