@@ -282,8 +282,6 @@ def test_tensorboard_callbacks(config_params):
         trainer = ModelBuilder(config_params)
         trainer.train()
         # check if loss history is written to file
-        import time
-        time.sleep(5)
         assert "wandb" in os.listdir(trainer.params["log_dir"])[0]
         # check if model checkpoint is written to file
         assert os.path.split(trainer.params["model_path"])[-1] in os.listdir(

@@ -218,12 +218,12 @@ class PromixNaive(ModelBuilder):
                             log_dict["loss_quantiles/" + key + "_" + class_[:3]] = \
                                 self.class_wise_loss_quantiles[key][class_]
                     log_dict["quantile_thresh"] = self.quantile
-                    wandb.log({
-                        "loss_mask": wandb.Image(
-                            tf.cast(loss_mask_aug[:1, ...], tf.float32)
-                            - tf.math.abs(x_aug[:1, ..., 1:2] * -1) * 0.25),
-                        "step": self.step
-                    }.update(log_dict))
+                    log_dict["loss_mask"] = wandb.Image(
+                        tf.cast(loss_mask_aug[:1, ...], tf.float32)\
+                        - tf.math.abs(x_aug[:1, ..., 1:2] * -1) * 0.25
+                    )
+                    log_dict["step"] = self.step
+                    wandb.log(log_dict)
                     # save self.class_wise_loss_quantiles as toml
                     with open(
                         os.path.join(self.params["log_dir"], "loss_quantiles.toml"), "w"
