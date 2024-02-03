@@ -394,8 +394,7 @@ class ModelBuilder:
                     if dataset_name not in self.val_loss_history.keys():
                         self.val_loss_history[dataset_name] = []
                     self.val_loss_history[dataset_name].append(val_loss)
-                    with self.summary_writer.as_default():
-                        tf.summary.scalar(dataset_name + "_val", val_loss, step=self.step)
+                    wandb.log({dataset_name + "_val": val_loss})
             if "save_model_on_dataset_name" in self.params.keys():
                 current = self.val_loss_history[self.params["save_model_on_dataset_name"]][-1]
                 if current <= self.best_val_loss[self.params["save_model_on_dataset_name"]]:
@@ -683,7 +682,6 @@ class ModelBuilder:
         )
         return dataset
     
-
     def predict_dataset_list(
             self, datasets, save_predictions=True, fname="predictions", ckpt_path=None
         ):
