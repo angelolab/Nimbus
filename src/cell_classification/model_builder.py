@@ -322,23 +322,11 @@ class ModelBuilder:
             for validation_dataset, dataset_name in zip(
                 self.validation_datasets, self.dataset_names
             ):
-                pred_list = self.predict_dataset(
-                    validation_dataset, save_predictions=False
-                )
-                # prepare cell_table
-                activity_list = []
-                for pred in pred_list:
-                    activity_df = pred["activity_df"].copy()
-                    for key in ["dataset", "marker", "folder_name"]:
-                        activity_df[key] = [pred[key]]*len(activity_df)
-                    activity_list.append(activity_df)
-                activity_df = pd.concat(activity_list)
+                activity_df = self.predict_dataset_list(validation_dataset, save_predictions=False)
                 for marker in activity_df.marker.unique():
-                    tmp_df = activity_df[
-                        (activity_df.dataset == dataset_name) & (activity_df.marker == marker)
-                    ]
+                    tmp_df = activity_df[activity_df.marker == marker]
                     metrics = calc_scores(
-                        gt=tmp_df["activity"], pred=tmp_df["pred_activity"], threshold=0.5
+                        gt=tmp_df["activity"].values, pred=tmp_df["prediction"].values, threshold=0.5
                     )
                     metric_dict[dataset_name + "/" + marker] = {
                         "precision": metrics["precision"],
@@ -697,17 +685,18 @@ class ModelBuilder:
         if ckpt_path:
             self.load_model(ckpt_path)
             print("Loaded model from", ckpt_path)
-        else:
+        elif not hasattr(self, "model") or self.model is None:
             self.load_model(self.params["model_path"])
             print("Loaded model from", self.params["model_path"])
+        if isinstance(datasets, tf.data.Dataset):
+            datasets = [datasets]
 
         df_list = []
         for dataset in datasets:
             dataset = dataset.prefetch(tf.data.AUTOTUNE)
-            for example in dataset:
+            for j, example in enumerate(dataset):
                 x_batch, _ = self.prep_batches(example)
                 prediction = self.predict(x_batch)
-                
                 for i, df in enumerate(example["activity_df"].numpy()):
                     df = pd.read_json(df.decode())
                     cell_ids, mean_per_cell = segment_mean(
@@ -720,6 +709,7 @@ class ModelBuilder:
                     df["marker"] = [example["marker"].numpy()[i].decode()] * len(df)
                     df_list.append(df)
         df = pd.concat(df_list)
+        df = df[df["labels"] != 0] # remove background
         if save_predictions:
             df.to_csv(os.path.join(self.params["model_dir"], fname+".csv"))
         return df
