@@ -6,6 +6,7 @@ import pandas as pd
 import tensorflow as tf
 import toml
 
+import wandb
 from cell_classification.promix_naive import PromixNaive
 
 from segmentation_data_prep_test import prep_object_and_inputs
@@ -79,7 +80,7 @@ def test_train(config_params):
         config_params["mixup_prob"] = 0.5
         trainer = PromixNaive(config_params)
         trainer.train()
-
+        wandb.finish()
         # check params.toml is dumped to file and contains the created paths
         assert "params.toml" in os.listdir(trainer.params["model_dir"])
         loaded_params = toml.load(os.path.join(trainer.params["model_dir"], "params.toml"))

@@ -3,6 +3,7 @@ import tempfile
 
 import numpy as np
 import pandas as pd
+import wandb
 
 from cell_classification.metrics import (HDF5Loader, average_roc, calc_metrics,
                                          calc_roc)
@@ -108,6 +109,7 @@ def test_HDF5Generator(config_params):
         model = ModelBuilder(config_params)
         model.train()
         model.predict_dataset(model.validation_datasets[0], save_predictions=True)
+        wandb.finish()
         generator = HDF5Loader(model.params['eval_dir'])
 
         # check if generator has the right number of items

@@ -4,7 +4,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras import Model, Input
 from tensorflow.keras import layers
-from tensorflow.keras.initializers import TruncatedNormal
+from tensorflow.keras.initializers import TruncatedNormal, HeNormal
 
 
 class Pad2D(layers.Layer):
@@ -59,7 +59,39 @@ class Pad2D(layers.Layer):
             return tf.pad(x, [[0,0], [h_pad,h_pad], [w_pad,w_pad], [0,0] ], self.mode)
         elif self.data_format == "channels_first":
             return tf.pad(x, [[0,0], [0,0], [h_pad,h_pad], [w_pad,w_pad] ], self.mode)
-    
+
+
+def maybe_crop(x, target_shape, data_format):
+    """Center crops x to target_shape if necessary.
+    Args:
+        x: input tensor
+        target_shape: shape of a reference tensor in BHWC or BCHW format
+        data_format: data format, either "channels_last" or "channels_first"
+    Returns:
+        cropped tensor
+    """
+    if data_format == "channels_last":
+        target_shape = target_shape[1:3]
+        x_shape = tf.shape(x)[1:3]
+        h_diff = x_shape[0] - target_shape[0]
+        w_diff = x_shape[1] - target_shape[1]
+        h_crop_start = h_diff // 2
+        w_crop_start = w_diff // 2
+        h_crop_end = h_diff - h_crop_start
+        w_crop_end = w_diff - w_crop_start
+        x = x[:, h_crop_start:-h_crop_end, w_crop_start:-w_crop_end, :]
+    elif data_format == "channels_first":
+        target_shape = target_shape[2:4]
+        x_shape = tf.shape(x)[2:4]
+        h_diff = x_shape[0] - target_shape[0]
+        w_diff = x_shape[1] - target_shape[1]
+        h_crop_start = h_diff // 2
+        w_crop_start = w_diff // 2
+        h_crop_end = h_diff - h_crop_start
+        w_crop_end = w_diff - w_crop_start
+        x = x[:, :, h_crop_start:-h_crop_end, w_crop_start:-w_crop_end]
+    return x
+
 
 class ConvBlock(layers.Layer):
     """Convolutional block consisting of two convolutional layers with same number of filters
@@ -87,6 +119,12 @@ class ConvBlock(layers.Layer):
 
         filters = _get_filter_count(layer_idx, filters_root)
         self.padding_layer = Pad2D(padding=(1, 1), data_format=data_format, mode=padding)
+        self.conv2d_0 = layers.Conv2D(filters=filters,
+                                      kernel_size=(1, 1),
+                                      kernel_initializer=HeNormal(),
+                                      strides=1,
+                                      padding="valid",
+                                      data_format=data_format)
         self.conv2d_1 = layers.Conv2D(filters=filters,
                                       kernel_size=(kernel_size, kernel_size),
                                       kernel_initializer=_get_kernel_initializer(filters, kernel_size),
@@ -103,6 +141,7 @@ class ConvBlock(layers.Layer):
                                       data_format=data_format)
         self.activation_2 = layers.Activation(activation)
         self.bn_2 = layers.BatchNormalization(axis=1 if data_format == "channels_first" else -1)
+        self.add = layers.Add()
 
     def call(self, inputs, **kwargs):
         """Apply ConvBlock to inputs.
@@ -111,8 +150,8 @@ class ConvBlock(layers.Layer):
         Returns:
             output tensor
         """
-        x = inputs
-        x = self.padding_layer(x)
+        skip = self.conv2d_0(inputs)
+        x = self.padding_layer(skip)
         x = self.conv2d_1(x)
         x = self.bn_1(x)
         x = self.activation_1(x)
@@ -120,6 +159,9 @@ class ConvBlock(layers.Layer):
         x = self.conv2d_2(x)
         x = self.bn_2(x)
         x = self.activation_2(x)
+        if self.padding == "VALID":
+            skip = maybe_crop(skip, tf.shape(x), self.data_format)
+        x = self.add([x, skip])
         return x
 
     def get_config(self):

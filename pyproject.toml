@@ -21,8 +21,11 @@ dependencies = [
     "seaborn>=0.12",
     "alpineer>=0.1.5",
     "natsort>=7.1",
-    "tensorflow==2.8",
-    "protobuf<=3.20",
+    "tensorflow~=2.8.0",
+    "tensorflow_addons~=0.16.1",
+    "pydot>=1.4.2,<2",
+    "protobuf",
+    "wandb"
 ]
 name = "cell_classification"
 authors = [{ name = "Angelo Lab", email = "theangelolab@gmail.com" }]

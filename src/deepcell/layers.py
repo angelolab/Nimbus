@@ -31,7 +31,7 @@ from tensorflow.keras import activations
 from tensorflow.keras import constraints
 from tensorflow.keras import initializers
 from tensorflow.keras import regularizers
-from keras.utils import conv_utils
+from tensorflow.python.keras.utils import conv_utils
 
 logger = tf.get_logger()
 

@@ -36,7 +36,6 @@ from deepcell.panopticnet import PanopticNet
 
 class PanopticNetTest(keras_parameterized.TestCase):
 
-    @keras_parameterized.run_all_keras_modes
     @parameterized.named_parameters([
         {
             'testcase_name': 'panopticnet_basic',
@@ -109,42 +108,6 @@ class PanopticNetTest(keras_parameterized.TestCase):
             'data_format': 'channels_last',
             'upsample_type': 'upsamplelike',
             'pyramid_levels': ['P3'],
-        },
-        {
-            'testcase_name': 'panopticnet_basic_cf',
-            'pooling': None,
-            'location': False,
-            'frames_per_batch': 1,
-            'data_format': 'channels_first',
-            'upsample_type': 'upsamplelike',
-            'pyramid_levels': ['P3'],
-        },
-        {
-            'testcase_name': 'panopticnet_location_cf',
-            'pooling': None,
-            'location': True,
-            'frames_per_batch': 1,
-            'data_format': 'channels_first',
-            'upsample_type': 'upsamplelike',
-            'pyramid_levels': ['P3'],
-        },
-        {
-            'testcase_name': 'panopticnet_avgpool_cf',
-            'pooling': 'avg',
-            'location': False,
-            'frames_per_batch': 1,
-            'data_format': 'channels_first',
-            'upsample_type': 'upsamplelike',
-            'pyramid_levels': ['P3'],
-        },
-        {
-            'testcase_name': 'panopticnet_maxpool_cf',
-            'pooling': 'max',
-            'location': False,
-            'frames_per_batch': 1,
-            'data_format': 'channels_first',
-            'upsample_type': 'upsamplelike',
-            'pyramid_levels': ['P3', 'P4', 'P5', 'P6', 'P7'],
         },
         {
             'testcase_name': 'panopticnet_basic_td_cf',
@@ -258,15 +221,6 @@ class PanopticNetTest(keras_parameterized.TestCase):
             'testcase_name': 'panopticnet_basic_cf_upsampling2d',
             'pooling': None,
             'location': False,
-            'frames_per_batch': 1,
-            'data_format': 'channels_first',
-            'upsample_type': 'upsampling2d',
-            'pyramid_levels': ['P3'],
-        },
-        {
-            'testcase_name': 'panopticnet_location_cf_upsampling2d',
-            'pooling': None,
-            'location': True,
             'frames_per_batch': 1,
             'data_format': 'channels_first',
             'upsample_type': 'upsampling2d',

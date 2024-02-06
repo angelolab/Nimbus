@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 
+import time
 import h5py
 import numpy as np
 import pandas as pd
@@ -277,13 +278,11 @@ def test_tensorboard_callbacks(config_params):
         config_params["weight_decay"] = 1e-4
         config_params["snap_steps"] = 5
         config_params["val_steps"] = 5
-
+        #
         trainer = ModelBuilder(config_params)
         trainer.train()
-
         # check if loss history is written to file
-        assert "tfevents" in os.listdir(trainer.params["log_dir"])[0]
-
+        assert "wandb" in os.listdir(trainer.params["log_dir"])[0]
         # check if model checkpoint is written to file
         assert os.path.split(trainer.params["model_path"])[-1] in os.listdir(
             trainer.params["model_dir"]
@@ -347,6 +346,7 @@ def test_predict_dataset(config_params):
         config_params["val_steps"] = 5000
         trainer = ModelBuilder(config_params)
         trainer.train()
+
         val_dset = trainer.validation_datasets[0]
         single_example_list = trainer.predict_dataset(val_dset)
 
