@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import toml
+from io import StringIO
 from deepcell.panopticnet import PanopticNet
 from deepcell.utils import count_gpus
 from tensorflow.keras.optimizers import Adam
@@ -24,6 +25,7 @@ from cell_classification.post_processing import (merge_activity_df,
 from cell_classification.segmentation_data_prep import (feature_description,
                                                         parse_dict)
 import wandb
+from tensorflow.keras import mixed_precision
 
 
 class ModelBuilder:
@@ -168,18 +170,26 @@ class ModelBuilder:
             self.params["model_path"] = os.path.join(
                 self.params["model_dir"], "{}.h5".format(self.params["experiment"])
             )
+            self.params["avg_model_path"] = os.path.join(
+                self.params["model_dir"], "{}_avg.h5".format(self.params["experiment"])
+            )
         self.params["loss_path"] = os.path.join(
             self.params["model_dir"], "{}.npz".format(self.params["experiment"])
         )
 
         # initialize optimizer and lr scheduler
         # replace with AdamW when available
+        initial_lr = self.params["lr"]
+        if self.num_gpus > 1:
+            print(f"Scaling learning rate by {self.num_gpus} for distributed training.")
+            initial_lr *= self.num_gpus # Linear scaling rule
+
         self.lr_sched = CosineDecay(
-            initial_learning_rate=self.params["lr"],
+            initial_learning_rate=initial_lr,
             decay_steps=self.params["num_steps"],
-            alpha=1e-6,
+            alpha=self.params["terminal_lr"],
         )
-        self.optimizer = Adam(learning_rate=self.lr_sched, clipnorm=0.001)
+        self.optimizer = Adam(learning_rate=self.lr_sched, clipnorm=self.params["gradient_clipping"])
 
         # initialize model
         if "test" in self.params.keys() and self.params["test"]:
@@ -201,6 +211,10 @@ class ModelBuilder:
                 norm_method="std", num_semantic_classes=self.params["classes"],
                 create_semantic_head=create_semantic_head, location=self.params["location"],
             )
+        
+        if self.params.get("load_model", False):
+            self.load_model(self.params["load_model"])
+            print("Loaded model from", self.params["load_model"])
 
         loss = {}
         # Give losses for all of the semantic heads
@@ -214,23 +228,61 @@ class ModelBuilder:
 
     @staticmethod
     @tf.function
-    def train_step(model, x, y):
+    def train_step(model, x, y, mixed_precision=False):
         """Trains the model for one step"""
         with tf.GradientTape() as tape:
             y_pred = model(x, training=True)
             loss = model.compute_loss(x, y, y_pred)
-        gradients = tape.gradient(loss, model.trainable_variables)
+        if mixed_precision: # Add a flag to your params
+            loss = model.optimizer.get_scaled_loss(loss)
+            scaled_gradients = tape.gradient(loss, model.trainable_variables)
+            gradients = model.optimizer.get_unscaled_gradients(scaled_gradients)
+        else:
+            gradients = tape.gradient(loss, model.trainable_variables)
         model.optimizer.apply_gradients(zip(gradients, model.trainable_variables))
         return loss
 
-    def distributed_train_step(self, model, x, y):
+    def distributed_train_step(self, model, x, y, mixed_precision=False):
         """Trains the model for one step on multiple GPUs"""
-        loss = self.strategy.run(self.train_step, args=(model, x, y))
-        return self.strategy.reduce(tf.distribute.ReduceOp.SUM, loss, axis=None)
+        # Define the step function that computes the loss per replica.
+        # Ensure the loss returned by model.compute_loss is the MEAN over the replica's batch.
+        # Keras default losses usually do this.
+        def step_fn(inputs):
+            x_rep, y_rep = inputs
+            with tf.GradientTape() as tape:
+                y_pred = model(x_rep, training=True)
+                # model.compute_loss (often via model.compiled_loss) typically returns
+                # the SCALAR mean loss for the replica's batch.
+                per_replica_loss = model.compute_loss(x=x_rep, y=y_rep, y_pred=y_pred)
+                if mixed_precision:
+                    per_replica_loss = model.optimizer.get_scaled_loss(per_replica_loss)
+                # If using custom loss, ensure it's the mean, or scale here:
+                # scaled_loss = per_replica_loss / self.strategy.num_replicas_in_sync
+            
+            # Gradients are computed based on the per_replica_loss
+            scaled_gradients = tape.gradient(per_replica_loss, model.trainable_variables)
+            gradients = model.optimizer.get_unscaled_gradients(scaled_gradients)
+            # Apply gradients - MirroredStrategy handles averaging automatically
+            model.optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+            return per_replica_loss # Return the per-replica mean loss
+
+        # Run the step function on each replica
+        per_replica_losses = self.strategy.run(step_fn, args=((x, y),))
+
+        # Reduce (average) the per-replica losses to get the mean loss over the global batch
+        mean_loss = self.strategy.reduce(tf.distribute.ReduceOp.MEAN, per_replica_losses, axis=None)
+        return mean_loss
 
     def train(self):
         """Calls prep functions and starts training loops"""
         print("Training on", self.num_gpus, "GPUs.")
+
+        if self.params.get("use_mixed_precision", False): # Add a flag to your params
+            print("Using mixed precision 'mixed_float16'")
+            policy = mixed_precision.Policy('mixed_float16')
+            mixed_precision.set_global_policy(policy)
+        self.stop_training = False
+        self.early_stopping_patience = self.params.get("early_stopping_patience", 0)
         # initialize data and model
         self.prep_data()
 
@@ -270,17 +322,30 @@ class ModelBuilder:
         with open(os.path.join(self.params["model_dir"], "params.toml"), "w") as f:
             toml.dump(self.params, f)
 
+        self.avg_model = tf.keras.models.clone_model(self.model)
         self.step = 0
-        self.val_f1_history = {}
+        self.val_f1_history = []
         self.train_loss_tmp = []
-        while self.step < self.params["num_steps"]:
+        while True:
             for x, y in tqdm(self.train_dataset):
-                train_loss = train_step(self.model, x, y)
+                train_loss = train_step(
+                    self.model, x, y, self.params.get("use_mixed_precision", False)
+                )
                 self.train_loss_tmp.append(train_loss)
                 self.step += 1
                 self.tensorboard_callbacks(x, y)
-                if self.step > self.params["num_steps"]:
+                if self.early_stopping_patience > 0 and self.stop_training:
+                    print("Early stopping triggered")
                     break
+                if self.step > self.params["num_steps"]:
+                    self.stop_training = True
+                    break
+                # set avg model weights as exponential moving average of model weights
+                for avg_w, w in zip(self.avg_model.weights, self.model.weights):
+                    avg_w.assign(0.99 * avg_w + 0.01 * w)
+            if self.stop_training:
+                break
+
         wandb.finish()
 
     def tensorboard_callbacks(self, x, y):
@@ -291,8 +356,8 @@ class ModelBuilder:
         """
         if self.step % 10 == 0:
             wandb.log({
-                "train_loss": tf.reduce_mean(self.train_loss_tmp),
-                "lr": self.model.optimizer._decayed_lr(tf.float32),
+                "train_loss": tf.reduce_mean(self.train_loss_tmp).numpy(),
+                "lr": self.lr_sched(self.model.optimizer.iterations).numpy(),
                 "step": self.step
             })
             print(
@@ -364,11 +429,12 @@ class ModelBuilder:
                     [v["specificity"] for k, v in metric_dict.items() if "avg" in k]
                 ),
             }
-            self.val_f1_history = metric_dict["avg"]["f1_score"]
+            self.val_f1_history.append(metric_dict["avg"]["f1_score"])
             wandb.log(metric_dict)
             if metric_dict["avg"]["f1_score"] >= tf.reduce_max(self.val_f1_history):
                 print("Saving model to", self.params["model_path"])
                 self.model.save_weights(self.params["model_path"])
+                self.avg_model.save_weights(self.params["avg_model_path"])
             # run external validation
             if hasattr(self, "external_validation_datasets"):
                 for validation_dataset, dataset_name in zip(
@@ -388,6 +454,12 @@ class ModelBuilder:
                 if current <= self.best_val_loss[self.params["save_model_on_dataset_name"]]:
                     print("Saving model to", self.params["model_path"])
                     self.model.save_weights(self.params["model_path"]+"_best.pkl")
+            # early stopping
+            if self.early_stopping_patience > 0:
+                if tf.reduce_max(self.val_f1_history[-self.early_stopping_patience:]) < tf.reduce_max(
+                    self.val_f1_history):
+                    print("Early stopping triggered")
+                    self.stop_training = True
 
     def prep_loss(self):
         """Prepares the loss function for the model
@@ -559,9 +631,9 @@ class ModelBuilder:
             num_pos_dict = {}
             for example in tqdm(dataset):
                 marker = tf.get_static_value(example["marker"]).decode("utf-8")
-                activity_df = pd.read_json(
+                activity_df = pd.read_json(StringIO(
                     tf.get_static_value(example["activity_df"]).decode("utf-8")
-                )
+                ))
                 if marker not in num_pos_dict.keys():
                     num_pos_dict[marker] = []
                 num_pos_dict[marker].append(int(np.sum(activity_df.activity == 1)))
@@ -587,9 +659,9 @@ class ModelBuilder:
                     True if the number of positive cells is above the quantile threshold
             """
             marker = tf.get_static_value(marker).decode("utf-8")
-            activity_df = pd.read_json(tf.get_static_value(activity_df).decode("utf-8"))
+            activity_df = pd.read_json(StringIO(tf.get_static_value(activity_df).decode("utf-8")))
             num_pos = tf.reduce_sum(tf.constant(activity_df.activity == 1, dtype=tf.float32))
-            return tf.greater_equal(num_pos, quantile_dict[marker])
+            return tf.greater(num_pos, quantile_dict[marker])
 
         dataset = dataset.filter(
             lambda example: tf.py_function(
@@ -633,35 +705,40 @@ class ModelBuilder:
             dataset (tf.data.Dataset):
                 Dataset to filter
             exclude_dset_marker (list):
-                List containing dataset and marker pairs to exclude [[d1, d2], [m1, m2]]
+                List containing dataset and marker pairs to exclude [[d1, m1], [d1, m2]] or
+                dictionary containing dataset and marker pairs to exclude {"d1": ["m1", "m2"]}
         Returns:
             dataset (tf.data.Dataset):
                 Filtered dataset
         """
         
-        def predicate(dataset, marker):
+        def predicate(dataset_name, marker_name):
             """Helper function that returns true if the marker is in marker_list
             Args:
-                dataset (tf.Tensor):
+                dataset_name (tf.Tensor):
                     Dataset name of the example
-                marker (tf.Tensor):
+                marker_name (tf.Tensor):
                     Marker name of the example
             Returns:
                 bool:
                     True if the marker is in marker_list
             """
-            dataset = tf.get_static_value(dataset).decode("utf-8")
-            marker = tf.get_static_value(marker).decode("utf-8")
-            return tf.logical_not(tf.logical_and(
-                tf.reduce_any(tf.equal(dataset,
-                                       exclude_dset_marker[0])
-                ),
-                tf.reduce_any(tf.equal(marker,
-                                       exclude_dset_marker[1])
-                )
-            ))
-        for example in dataset:
-            break
+            dataset_name = dataset_name.numpy().decode("utf-8")
+            marker_name = marker_name.numpy().decode("utf-8")
+
+            if isinstance(exclude_dset_marker, dict):
+                if dataset_name in exclude_dset_marker:
+                    markers_to_exclude = exclude_dset_marker[dataset_name]
+                    return marker_name not in markers_to_exclude
+                else:
+                    return True # dataset not in list
+            elif isinstance(exclude_dset_marker, list):
+                for dset, marker in exclude_dset_marker:
+                    if dset == dataset_name and marker == marker_name:
+                        return False
+                    return True # dataset and marker combo not in list
+            else:
+                raise ValueError("exclude_dset_marker should be a list or a dict")
 
         dataset = dataset.filter(
             lambda example: tf.py_function(
@@ -693,12 +770,12 @@ class ModelBuilder:
 
         df_list = []
         for dataset in datasets:
-            dataset = dataset.prefetch(tf.data.AUTOTUNE)
+            dataset = dataset.prefetch(8)
             for j, example in enumerate(dataset):
                 x_batch, _ = self.prep_batches(example)
                 prediction = self.predict(x_batch)
                 for i, df in enumerate(example["activity_df"].numpy()):
-                    df = pd.read_json(df.decode())
+                    df = pd.read_json(StringIO(df.decode()))
                     cell_ids, mean_per_cell = segment_mean(
                         example["instance_mask"][i:i+1], prediction[i:i+1]
                     )
@@ -709,7 +786,7 @@ class ModelBuilder:
                     df["marker"] = [example["marker"].numpy()[i].decode()] * len(df)
                     df_list.append(df)
         df = pd.concat(df_list)
-        df = df[df["labels"] != 0] # remove background
+        df = df[df["labels"] != 0]
         if save_predictions:
             df.to_csv(os.path.join(self.params["model_dir"], fname+".csv"))
         return df

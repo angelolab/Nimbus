@@ -1,6 +1,6 @@
 import argparse
 import os
-
+from io import StringIO
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -140,6 +140,7 @@ class PromixNaive(ModelBuilder):
         """Calls prep functions and starts training loops"""
         print("Training on", self.num_gpus, "GPUs.")
         # initialize data and model
+        self.early_stopping_patience = self.params.get("early_stopping_patience", 0)
         self.prep_data()
         wandb.init(
                 name=self.params["experiment"],
@@ -153,6 +154,7 @@ class PromixNaive(ModelBuilder):
         self.prep_model()
         self.matched_high_confidence_selection_thresholds()
         train_step = self.train_step
+        self.avg_model = tf.keras.models.clone_model(self.model)
 
         # make transformations on the training dataset
         self.train_dataset = self.train_dataset.prefetch(tf.data.AUTOTUNE)
@@ -161,7 +163,7 @@ class PromixNaive(ModelBuilder):
             toml.dump(self.params, f)
         self.step = 0
         self.global_val_loss = []
-        self.val_loss_history = {}
+        self.val_f1_history = []
         self.train_loss_tmp = []
         # train the model
         while self.step < self.params["num_steps"]:
@@ -182,7 +184,7 @@ class PromixNaive(ModelBuilder):
                     ],
                 )
                 batch["activity_df"] = [
-                    pd.read_json(df.decode()) for df in tf.get_static_value(batch["activity_df"])
+                    pd.read_json(StringIO(df.decode())) for df in tf.get_static_value(batch["activity_df"])
                 ]
                 batch["activity_df"] = [
                     df.merge(
@@ -235,6 +237,10 @@ class PromixNaive(ModelBuilder):
                     )
                     print("Saving model to", model_fname)
                     self.model.save_weights(model_fname)
+                # set avg model weights as exponential moving average of model weights
+                for avg_w, w in zip(self.avg_model.weights, self.model.weights):
+                    avg_w.assign(0.99 * avg_w + 0.01 * w)
+
         wandb.finish()
 
     @staticmethod
