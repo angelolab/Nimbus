@@ -51,7 +51,7 @@ location = false
 [loss_kwargs]
 from_logits = false
 label_smoothing = 0.05
-class_weight=0.5
+class_weight = 0.5
 
 [classes]
 marker_positive = 1

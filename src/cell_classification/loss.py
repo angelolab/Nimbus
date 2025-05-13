@@ -14,6 +14,7 @@ class Loss():
             **kwargs:
                 additional arguments for the loss function
         """
+        self.class_weight = kwargs.pop("class_weight", None)
         self.loss_fn = getattr(tf.keras.losses, loss_name)(
             reduction=tf.keras.losses.Reduction.NONE, **kwargs
         )
@@ -33,6 +34,19 @@ class Loss():
         y_true = tf.reshape(y_true, tf.shape(loss_img))
         return tf.where(y_true == 2, tf.zeros_like(loss_img), loss_img)
 
+    def apply_loss_weight(self, loss_img, y_true, weight):
+        """ Weight gt positive and negative samples differently
+        Args:
+            loss_img (tf.Tensor):
+                loss image
+            y_true (tf.Tensor):
+                ground truth image 
+            weight (float):
+                weight for the positive samples
+        """
+        y_true = tf.reshape(y_true, tf.shape(loss_img))
+        return tf.where(y_true == 1, weight * loss_img, loss_img*(1-weight))
+
     def __call__(self, y_true, y_pred):
         """ Call the loss function
         Args:
@@ -47,6 +61,8 @@ class Loss():
         loss_img = self.loss_fn(y_true=tf.clip_by_value(y_true, 0, 1), y_pred=y_pred)
         if self.selective_masking:
             loss_img = self.mask_out(loss_img, y_true)
+        if self.class_weight is not None:
+            loss_img = self.apply_loss_weight(loss_img, y_true, self.class_weight)
         return loss_img
 
     def get_config(self):
