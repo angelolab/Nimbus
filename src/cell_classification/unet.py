@@ -268,6 +268,12 @@ class CropConcatBlock(layers.Layer):
                                             width_diff: (x2_shape[3] + width_diff)]
             x = tf.concat([down_layer_cropped, x], axis=1)
         return x
+    
+    def get_config(self):
+        """Returns the config of a CropConcatBlock."""
+        return dict(data_format=self.data_format,
+                    **super(CropConcatBlock, self).get_config(),
+                    )
 
 
 def build_model(nx: Optional[int] = None,

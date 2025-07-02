@@ -631,9 +631,9 @@ class ModelBuilder:
             num_pos_dict = {}
             for example in tqdm(dataset):
                 marker = tf.get_static_value(example["marker"]).decode("utf-8")
-                activity_df = pd.read_json(StringIO(
+                activity_df = pd.read_json(
                     tf.get_static_value(example["activity_df"]).decode("utf-8")
-                ))
+                )
                 if marker not in num_pos_dict.keys():
                     num_pos_dict[marker] = []
                 num_pos_dict[marker].append(int(np.sum(activity_df.activity == 1)))
@@ -659,9 +659,9 @@ class ModelBuilder:
                     True if the number of positive cells is above the quantile threshold
             """
             marker = tf.get_static_value(marker).decode("utf-8")
-            activity_df = pd.read_json(StringIO(tf.get_static_value(activity_df).decode("utf-8")))
+            activity_df = pd.read_json(tf.get_static_value(activity_df).decode("utf-8"))
             num_pos = tf.reduce_sum(tf.constant(activity_df.activity == 1, dtype=tf.float32))
-            return tf.greater(num_pos, quantile_dict[marker])
+            return tf.greater_equal(num_pos, quantile_dict[marker])
 
         dataset = dataset.filter(
             lambda example: tf.py_function(
@@ -705,40 +705,33 @@ class ModelBuilder:
             dataset (tf.data.Dataset):
                 Dataset to filter
             exclude_dset_marker (list):
-                List containing dataset and marker pairs to exclude [[d1, m1], [d1, m2]] or
-                dictionary containing dataset and marker pairs to exclude {"d1": ["m1", "m2"]}
+                List containing dataset and marker pairs to exclude [[d1, d2], [m1, m2]]
         Returns:
             dataset (tf.data.Dataset):
                 Filtered dataset
         """
         
-        def predicate(dataset_name, marker_name):
+        def predicate(dataset, marker):
             """Helper function that returns true if the marker is in marker_list
             Args:
-                dataset_name (tf.Tensor):
+                dataset (tf.Tensor):
                     Dataset name of the example
-                marker_name (tf.Tensor):
+                marker (tf.Tensor):
                     Marker name of the example
             Returns:
                 bool:
                     True if the marker is in marker_list
             """
-            dataset_name = dataset_name.numpy().decode("utf-8")
-            marker_name = marker_name.numpy().decode("utf-8")
-
-            if isinstance(exclude_dset_marker, dict):
-                if dataset_name in exclude_dset_marker:
-                    markers_to_exclude = exclude_dset_marker[dataset_name]
-                    return marker_name not in markers_to_exclude
-                else:
-                    return True # dataset not in list
-            elif isinstance(exclude_dset_marker, list):
-                for dset, marker in exclude_dset_marker:
-                    if dset == dataset_name and marker == marker_name:
-                        return False
-                    return True # dataset and marker combo not in list
-            else:
-                raise ValueError("exclude_dset_marker should be a list or a dict")
+            dataset = tf.get_static_value(dataset).decode("utf-8")
+            marker = tf.get_static_value(marker).decode("utf-8")
+            return tf.logical_not(tf.logical_and(
+                tf.reduce_any(tf.equal(dataset,
+                                       exclude_dset_marker[0])
+                ),
+                tf.reduce_any(tf.equal(marker,
+                                       exclude_dset_marker[1])
+                )
+            ))
 
         dataset = dataset.filter(
             lambda example: tf.py_function(
