@@ -74,5 +74,6 @@ class Loss():
         return {
             "loss_name": self.loss_fn.__class__.__name__,
             "selective_masking": self.selective_masking,
+            "class_weight": self.class_weight,
             **self.loss_fn.get_config(),
         }

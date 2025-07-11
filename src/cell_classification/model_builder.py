@@ -281,6 +281,7 @@ class ModelBuilder:
             print("Using mixed precision 'mixed_float16'")
             policy = mixed_precision.Policy('mixed_float16')
             mixed_precision.set_global_policy(policy)
+            self.optimizer = mixed_precision.LossScaleOptimizer(self.optimizer)
         self.stop_training = False
         self.early_stopping_patience = self.params.get("early_stopping_patience", 0)
         # initialize data and model
