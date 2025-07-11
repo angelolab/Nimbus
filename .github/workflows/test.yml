@@ -31,9 +31,9 @@ jobs:
         run: |
           pytest
   
-      - name: Archive Coverage
-        uses: actions/upload-artifact@v3
-        with:
-          name: coverage
-          path: |
-            coverage.lcov
+      # - name: Archive Coverage
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: coverage
+      #     path: |
+      #       coverage.lcov

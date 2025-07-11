@@ -23,8 +23,8 @@ jobs:
       - name: Check wheel Metadata
         run: pipx run twine check dist/*
 
-      - name: Store Wheel Artifacts
-        uses: actions/upload-artifact@v3
-        with:
-          name: distributions
-          path: dist/*.whl
+      # - name: Store Wheel Artifacts
+      #   uses: actions/upload-artifact@v3
+      #   with:
+      #     name: distributions
+      #     path: dist/*.whl

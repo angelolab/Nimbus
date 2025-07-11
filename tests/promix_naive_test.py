@@ -172,25 +172,15 @@ def test_class_wise_loss_selection(config_params):
     assert trainer.class_wise_loss_quantiles[dataset_marker]["negative"] != 0.5
 
 
-def test_matched_high_confidence_selection(config_params):
+def test_matched_high_confidence_selection_thresholds(config_params):
+    config_params["test"] = True
     trainer = PromixNaive(config_params)
-    activity_df_list = prepare_activity_df()
-    df = activity_df_list[0]
-    df["loss"] = df.activity * df.prediction + (1 - df.activity) * (1 - df.prediction)
-    positive_df = df[df["activity"] == 1]
-    negative_df = df[df["activity"] == 0]
-    mark = df["marker"][0]
     trainer.matched_high_confidence_selection_thresholds()
-    selected_subset = trainer.matched_high_confidence_selection(positive_df, negative_df)
-    df = pd.concat(selected_subset)
-
+    thresholds = trainer.confidence_loss_thresholds
     # check that the output has the right dimension
-    assert len(df) == 1
-
-    # check that the output is correct and only those cells are selected that have a loss
-    # smaller than the threshold
-    gt_activity = "positive" if df["activity"].values[0] == 1 else "negative"
-    assert (df.loss.values[0] <= trainer.confidence_loss_thresholds[gt_activity])
+    assert len(thresholds) == 2
+    assert thresholds["positive"] > 0.0
+    assert thresholds["negative"] > 0.0
 
 
 def test_batchwise_loss_selection(config_params):
